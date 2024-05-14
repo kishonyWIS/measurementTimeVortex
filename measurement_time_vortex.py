@@ -6,14 +6,22 @@ from itertools import chain
 
 PAULI_LABELS_TO_INT = {'MXX': 0, 'MYY': 1, 'MZZ': 2}
 
+
+def site_to_physical_location(site):
+    x = 1.5 * (site[0] + site[1]) + site[2]
+    y = (site[1] - site[0]) * np.sqrt(3) / 2
+    return x, y
+
+
 class FloquetCode:
-    def __init__(self, num_sites_x, num_sites_y, vortex_location=None, periodic_bc=False):
+    def __init__(self, num_sites_x, num_sites_y, vortex_location=None, periodic_bc=False, vortex_sign=-1):
         self.num_sites_x = num_sites_x
         self.num_sites_y = num_sites_y
         self.vortex_location = vortex_location
+        self.vortex_sign = vortex_sign
         self.periodic_bc = periodic_bc
         self.bonds = self.get_bonds()
-        self.bonds = sorted(self.bonds, key=lambda bond: bond.order)
+        self.redefine_bond_order()
         self.plaquettes = self.get_plaquettes()
         for plaquette in self.plaquettes:
             plaquette.get_bonds(self.bonds)
@@ -34,19 +42,27 @@ class FloquetCode:
                     if self.periodic_bc is True:
                         site2[0] = site2[0] % self.num_sites_x
                         site2[1] = site2[1] % self.num_sites_y
-                    elif self.periodic_bc == [True, False]:
+                    elif (np.array(self.periodic_bc) == np.array([True, False])).all():
                         site2[0] = site2[0] % self.num_sites_x
-                    elif self.periodic_bc == [False, True]:
+                    elif (np.array(self.periodic_bc) == np.array([False, True])).all():
                         site2[1] = site2[1] % self.num_sites_y
                     else:
                         pass
                     # check if site2 is outside the lattice
                     if site2[0] < 0 or site2[0] >= self.num_sites_x or site2[1] < 0 or site2[1] >= self.num_sites_y:
                         continue
-                    order = self.get_bond_order(site1, pauli_label)
+                    order = self.get_bond_order(site1, site2, pauli_label)
                     bond = Bond(site1, site2, pauli_label, order)
                     bonds.append(bond)
         return bonds
+
+    def redefine_bond_order(self):
+        self.bonds = sorted(self.bonds, key=lambda b: b.order)
+        for i, bond in enumerate(self.bonds):
+            bond.order = 0
+            for previous_bond in self.bonds[:i]:
+                if previous_bond.overlaps(bond):
+                    bond.order = max(previous_bond.order + 1, bond.order)
 
     def get_plaquettes(self):
         plaquettes = []
@@ -62,18 +78,29 @@ class FloquetCode:
                 # drop the plaquette if it is not periodic
                 if self.periodic_bc is False and (ix == self.num_sites_x-1 or iy == self.num_sites_y-1):
                     continue
-                if self.periodic_bc == [True, False] and ix == self.num_sites_x-1:
+                if (np.array(self.periodic_bc) == np.array([True, False])).all() and iy == self.num_sites_y-1:
                     continue
-                if self.periodic_bc == [False, True] and iy == self.num_sites_y-1:
+                if (np.array(self.periodic_bc) == np.array([False, True])).all() and ix == self.num_sites_x-1:
                     continue
                 plaquettes.append(Plaquette(sites, [ix, iy]))
         return plaquettes
 
-    def get_bond_order(self, site1, pauli_label):
+    def get_bond_order(self, site1, site2, pauli_label):
         pauli_label_int = PAULI_LABELS_TO_INT[pauli_label]
-        return (site1[0] - site1[1] - pauli_label_int)%3
+        order_without_vortex = (site1[0] - site1[1] - pauli_label_int)/3
 
-    def get_circuit(self, reps=1, before_parity_measure_2q_depolarization=None):
+        if self.vortex_location == 'x':
+            location_dependent_delay = lambda site: site[0]/self.num_sites_x
+        elif self.vortex_location == 'y':
+            location_dependent_delay = lambda site: site[1]/self.num_sites_y
+        else:
+            location_dependent_delay = lambda site: 0
+
+        order = order_without_vortex + location_dependent_delay(site1) * self.vortex_sign
+        order = order%1
+        return order
+
+    def get_circuit(self, reps=25, reps_without_noise=10, before_parity_measure_2q_depolarization=None):
         circ = stim.Circuit()
 
         # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
@@ -84,7 +111,7 @@ class FloquetCode:
         for rep in range(reps):
             for bond in self.bonds:
                 qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
-                if before_parity_measure_2q_depolarization is not None and rep>=2 and rep<reps-2:
+                if before_parity_measure_2q_depolarization is not None and rep>=reps_without_noise and rep<reps-reps_without_noise:
                     circ.append_operation("DEPOLARIZE2", qubit_pair, before_parity_measure_2q_depolarization)
                 circ.append(bond.pauli_label, qubit_pair)
                 bond.measurement_indexes.append(i_meas)
@@ -107,9 +134,8 @@ class FloquetCode:
                     pass
 
         # Finish circuit with data measurements.
-        qubits_for_observable = [self.site_to_index([ix, 0, s])
-                                 for ix in range(self.num_sites_x)
-                                 for s in range(2)]
+        self.sites_for_observable = [[ix, 0, s] for ix in range(self.num_sites_x) for s in range(2)]
+        qubits_for_observable = [self.site_to_index(site) for site in self.sites_for_observable]
         circ.append_operation("M", qubits_for_observable)
         circ.append_operation("OBSERVABLE_INCLUDE",
                                       [stim.target_rec(i - len(qubits_for_observable)) for i in range(len(qubits_for_observable))],
@@ -119,18 +145,18 @@ class FloquetCode:
     def site_to_index(self, site):
         return np.ravel_multi_index(site, (self.num_sites_x, self.num_sites_y, 2))
 
-    def site_to_physical_location(self, site):
-        x = 1.5 * (site[0] + site[1]) + site[2]
-        y = (site[1] - site[0]) * np.sqrt(3) / 2
-        return x, y
-
     def draw(self):
         fig, ax = plt.subplots()
         for bond in self.bonds:
-            x1, y1 = self.site_to_physical_location(bond.site1)
-            x2, y2 = self.site_to_physical_location(bond.site2)
+            x1, y1 = site_to_physical_location(bond.site1)
+            x2, y2 = site_to_physical_location(bond.site2)
             ax.plot([x1, x2], [y1, y2], 'k')
-            ax.text((x1+x2)/2, (y1+y2)/2, bond.pauli_label+str(bond.order), fontsize=8, ha='center', va='center')
+            fontsize = 10 if (x1-x2)**2 + (y1-y2)**2 < 2 else 15
+            ax.text((x1+x2)/2+0.1*np.random.randn(), (y1+y2)/2+0.1*np.random.randn(), str(bond.order), fontsize=fontsize, ha='center', va='center')
+        # draw the sites qubits_for_observable
+        for site in self.sites_for_observable:
+            x, y = site_to_physical_location(site)
+            ax.plot(x, y, 'ro')
         ax.set_aspect('equal')
 
 
@@ -144,6 +170,12 @@ class Bond:
 
     def __repr__(self):
         return f'Bond({self.site1}, {self.site2}, {self.pauli_label}, {self.order})'
+
+    def overlaps(self, other):
+        return ((self.site1 == other.site1).all() or
+                (self.site1 == other.site2).all() or
+                (self.site2 == other.site1).all() or
+                (self.site2 == other.site2).all())
 
 
 class Plaquette:
@@ -164,16 +196,18 @@ class Plaquette:
         all_indexes = list(chain(*all_indexes))
         return sorted(all_indexes)
 
-d_list = [3, 6, 9]
-phys_err_rate_list = np.linspace(0.,0.15, 16)
+d_list = [6]
+phys_err_rate_list = np.linspace(0.,0.15, 16) #0.03
 shots = 100000
 log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
+reps = 24
+reps_without_noise = 10
+
 for id,d in enumerate(d_list):
     for ierr_rate,phys_err_rate in enumerate(phys_err_rate_list):
-        code = FloquetCode(d, d, periodic_bc=True)
+        code = FloquetCode(d, d, periodic_bc=(True,False), vortex_location='x', vortex_sign=-1)
 
-        reps = 7
-        circ = code.get_circuit(reps=reps, before_parity_measure_2q_depolarization=phys_err_rate)
+        circ = code.get_circuit(reps=reps, reps_without_noise=reps_without_noise, before_parity_measure_2q_depolarization=phys_err_rate)
         model = circ.detector_error_model(decompose_errors=True)
         matching = pymatching.Matching.from_detector_error_model(model)
         # print(circ)
@@ -185,8 +219,9 @@ for id,d in enumerate(d_list):
 
         print("logical error_rate", num_errors/shots)
         log_err_rate[id, ierr_rate] = num_errors / shots
-        # code.draw()
-        # plt.show()
+    print(circ)
+    code.draw()
+    plt.show()
 
 plt.figure()
 for id in range(len(d_list)):
