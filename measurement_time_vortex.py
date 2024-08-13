@@ -100,12 +100,16 @@ class FloquetCode:
         order = order%1
         return order
 
-    def get_circuit(self, reps=25, reps_without_noise=10, before_parity_measure_2q_depolarization=None):
+    def get_circuit(self, reps=24, reps_without_noise=10, before_parity_measure_2q_depolarization=None, logical_operator='inner_x'):
+        assert reps%2==0
         circ = stim.Circuit()
 
-        # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
-        # circ.append_operation("H", x_initialized)
-        # circ.append_operation("H_YZ", y_initialized)
+        if logical_operator == 'outer_y':
+            # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
+            self.sites_for_observable = [[0, iy, s] for iy in range(self.num_sites_y) for s in range(2)]
+            # self.x_initialized =
+            circ.append_operation("H", x_initialized)
+            circ.append_operation("H_YZ", y_initialized)
 
         i_meas = 0
         for rep in range(reps):
@@ -196,8 +200,8 @@ class Plaquette:
         all_indexes = list(chain(*all_indexes))
         return sorted(all_indexes)
 
-d_list = [6]
-phys_err_rate_list = np.linspace(0.,0.15, 16) #0.03
+d_list = [3]
+phys_err_rate_list = [0]#np.linspace(0.,0.15, 16) #0.03
 shots = 100000
 log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
 reps = 24
@@ -205,12 +209,11 @@ reps_without_noise = 10
 
 for id,d in enumerate(d_list):
     for ierr_rate,phys_err_rate in enumerate(phys_err_rate_list):
-        code = FloquetCode(d, d, periodic_bc=(True,False), vortex_location='x', vortex_sign=-1)
+        code = FloquetCode(d, d, periodic_bc=(True, False), vortex_location=None, vortex_sign=-1)
 
         circ = code.get_circuit(reps=reps, reps_without_noise=reps_without_noise, before_parity_measure_2q_depolarization=phys_err_rate)
         model = circ.detector_error_model(decompose_errors=True)
         matching = pymatching.Matching.from_detector_error_model(model)
-        # print(circ)
         sampler = circ.compile_detector_sampler()
         syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
 
@@ -219,9 +222,9 @@ for id,d in enumerate(d_list):
 
         print("logical error_rate", num_errors/shots)
         log_err_rate[id, ierr_rate] = num_errors / shots
-    print(circ)
-    code.draw()
-    plt.show()
+        print(circ)
+        code.draw()
+        plt.show()
 
 plt.figure()
 for id in range(len(d_list)):
