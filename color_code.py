@@ -6,7 +6,7 @@ from matplotlib import pyplot as plt, patches
 import pymatching
 from itertools import chain
 from qiskit.quantum_info import Pauli
-
+import pickle
 
 def site_to_physical_location(site):
     x = np.sqrt(3) * site[0] + np.sqrt(3) / 2 * site[1] + np.sqrt(3) / 2 * site[2]
@@ -98,7 +98,7 @@ class FloquetCode:
         return (site1[0] - site1[1] - direction[0] + direction[1]) % 3
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_rate=0.01, noise_type=None,
-                    logical_operator_color='blue', logical_operator_pauli_type='X', logical_operator_direction='x',
+                    logical_operator_pauli_type='X', logical_operator_direction='x',
                     detector_indexes=None, detector_args=None):
         assert reps % 2 == 0
         circ = stim.Circuit()
@@ -108,15 +108,11 @@ class FloquetCode:
                                      for ix in range(self.num_sites_x)
                                      for iy in [0]
                                      for s in [0, 1]]
-            permutation_amount = {'red': 0, 'green': 1, 'blue': 2}
         elif logical_operator_direction == 'y':
             sites_on_logical_path = [[ix, iy, s]
                                      for ix in [0]
                                      for iy in range(self.num_sites_y)
                                      for s in [0, 1]]
-            permutation_amount = {'red': 0, 'green': 2, 'blue': 1}
-        logical_operator_string = (2 * logical_operator_pauli_type + 'I') * (len(sites_on_logical_path) // 3)
-        logical_operator_string = cyclic_permute(logical_operator_string, permutation_amount[logical_operator_color])
 
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
@@ -133,12 +129,6 @@ class FloquetCode:
             logical_operator_string.append(logical_operator_pauli_type if append_logical%2 else 'I')
         logical_operator_string = ''.join(logical_operator_string)
 
-
-
-        # if self.num_sites_x == 9:
-        #     logical_operator_string = 'IXXIXXIXIXXIXIXXIX'
-        # elif self.num_sites_x == 6:
-        #     logical_operator_string = 'IXXIXIXXIXIX'
         # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
         all_sites = [[ix, iy, s]
                      for ix in range(self.num_sites_x)
@@ -153,7 +143,7 @@ class FloquetCode:
                 full_logical_operator_string.append('I')
         full_logical_operator_string = ''.join(full_logical_operator_string)
         logical_pauli = Pauli(full_logical_operator_string)
-        self.draw_pauli(logical_pauli)
+        # self.draw_pauli(logical_pauli)
 
         # indexes where the logical operator is X, Y, Z
         x_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'X']
@@ -325,48 +315,63 @@ class Plaquette:
         return sorted(all_indexes)
 
 
-d_list = [6]
-phys_err_rate_list = [0.003, 0.01, 0.03]  #np.linspace(0.,0.15, 15)#[0.01]# #0.03 #
+d_list = [6,9]
+phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]  #np.linspace(0.,0.15, 15)#[0.01]# #0.03 #
 shots = 100000
 log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
 reps = 12
 reps_without_noise = 4
 noise_type = 'DEPOLARIZE1'
+boundary_conditions = ('periodic', 'periodic')
 
-for id, d in enumerate(d_list):
-    detector_indexes = None
-    detector_args = None
-    for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
-        code = FloquetCode(d, 3, boundary_conditions=('periodic','periodic'), vortex_location='x', vortex_sign=1)
-        circ, detector_indexes, detector_args = code.get_circuit(
-            reps=reps, reps_without_noise=reps_without_noise,
-            noise_rate=phys_err_rate, noise_type=noise_type,
-            logical_operator_color='blue', logical_operator_pauli_type='X', logical_operator_direction='y',
-            detector_indexes=detector_indexes, detector_args=detector_args)
-        # blue, X, x
-        # blue, X, y
-        # red, Z, x
-        # red, Z, y
-        model = circ.detector_error_model(decompose_errors=True)
-        matching = pymatching.Matching.from_detector_error_model(model)
-        sampler = circ.compile_detector_sampler()
-        syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
+# vortex_location = 'x'
+# vortex_sign = 1
+# logical_operator_pauli_type = 'X'
+# logical_operator_direction = 'y'
 
-        predicted_observables = matching.decode_batch(syndrome)
-        num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
 
-        print("logical error_rate", num_errors / shots)
-        log_err_rate[id, ierr_rate] = num_errors / shots
-        # print(circ)
+for vortex_location in ['x', None]:
+    for vortex_sign in [1, -1]:
+        for logical_operator_pauli_type in ['X', 'Z']:
+            for logical_operator_direction in ['x', 'y']:
+                print(f'vortex_location: {vortex_location}, vortex_sign: {vortex_sign}, logical_operator_pauli_type: {logical_operator_pauli_type}, logical_operator_direction: {logical_operator_direction}')
 
-plt.figure()
-for id in range(len(d_list)):
-    plt.errorbar(phys_err_rate_list, log_err_rate[id, :],
-                 np.sqrt(log_err_rate[id, :] * (1 - log_err_rate[id, :]) / shots))
-plt.xlabel('physical error rate')
-plt.ylabel('logical error rate')
-plt.yscale('log')
-plt.xscale('log')
-plt.legend(d_list, title='code size')
-plt.tight_layout()
-plt.show()
+                for id, d in enumerate(d_list):
+                    detector_indexes = None
+                    detector_args = None
+                    for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
+                        code = FloquetCode(d, d, boundary_conditions=boundary_conditions,
+                                           vortex_location=vortex_location, vortex_sign=vortex_sign)
+                        circ, detector_indexes, detector_args = code.get_circuit(
+                            reps=reps, reps_without_noise=reps_without_noise,
+                            noise_rate=phys_err_rate, noise_type=noise_type,
+                            logical_operator_pauli_type=logical_operator_pauli_type, logical_operator_direction=logical_operator_direction,
+                            detector_indexes=detector_indexes, detector_args=detector_args)
+                        model = circ.detector_error_model(decompose_errors=True)
+                        matching = pymatching.Matching.from_detector_error_model(model)
+                        sampler = circ.compile_detector_sampler()
+                        syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
+
+                        predicted_observables = matching.decode_batch(syndrome)
+                        num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+
+                        print("logical error_rate", num_errors / shots)
+                        log_err_rate[id, ierr_rate] = num_errors / shots
+                        # print(circ)
+
+                plt.figure()
+                for id in range(len(d_list)):
+                    plt.errorbar(phys_err_rate_list, log_err_rate[id, :],
+                                 np.sqrt(log_err_rate[id, :] * (1 - log_err_rate[id, :]) / shots))
+                plt.xlabel('physical error rate')
+                plt.ylabel('logical error rate')
+                plt.yscale('log')
+                plt.xscale('log')
+                plt.legend(d_list, title='code size')
+                plt.tight_layout()
+                plt.savefig(f'figures/threshold_noisetype_{noise_type}_logical_operator_{logical_operator_pauli_type}_direction_{logical_operator_direction}_boundary_conditions_{boundary_conditions}_vortex_{vortex_location}_{vortex_sign}.pdf')
+                #save the data for the figure (d_list, phys_err_rate_list, log_err_rate)
+                with open(f'data/threshold_noisetype_{noise_type}_logical_operator_{logical_operator_pauli_type}_direction_{logical_operator_direction}_boundary_conditions_{boundary_conditions}_vortex_{vortex_location}_{vortex_sign}.pkl', 'wb') as f:
+                    pickle.dump({'d_list': d_list, 'phys_err_rate_list': phys_err_rate_list, 'log_err_rate': log_err_rate}, f)
+
+                # plt.show()
