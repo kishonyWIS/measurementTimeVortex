@@ -6,8 +6,6 @@ from matplotlib import pyplot as plt, patches
 import pymatching
 from itertools import chain
 from qiskit.quantum_info import Pauli
-from simple_stabilizer import StabilizerGroup, PauliMeasurement
-from stabilizer import pauli_weight
 
 
 def site_to_physical_location(site):
@@ -99,8 +97,9 @@ class FloquetCode:
     def get_bond_color(self, direction, site1):
         return (site1[0] - site1[1] - direction[0] + direction[1]) % 3
 
-    def get_circuit(self, reps=12, reps_without_noise=4, before_parity_measure_2q_depolarization=None,
-                        logical_operator_color='blue', logical_operator_pauli_type='X', logical_operator_direction='x'):
+    def get_circuit(self, reps=12, reps_without_noise=4, noise_rate=0.01, noise_type=None,
+                    logical_operator_color='blue', logical_operator_pauli_type='X', logical_operator_direction='x',
+                    detector_indexes=None, detector_args=None):
         assert reps % 2 == 0
         circ = stim.Circuit()
 
@@ -118,6 +117,28 @@ class FloquetCode:
             permutation_amount = {'red': 0, 'green': 2, 'blue': 1}
         logical_operator_string = (2 * logical_operator_pauli_type + 'I') * (len(sites_on_logical_path) // 3)
         logical_operator_string = cyclic_permute(logical_operator_string, permutation_amount[logical_operator_color])
+
+        logical_operator_string = []
+        for i_along_path, site in enumerate(sites_on_logical_path):
+            bonds_connected_to_site = [bond for bond in self.bonds if np.all(bond.site1 == site) or np.all(bond.site2 == site)]
+            append_logical = 0 # 0: I, 1: logical_operator_pauli_type
+            for bond in bonds_connected_to_site:
+                if bond.pauli_label[0] != logical_operator_pauli_type:
+                    break
+                if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(bond.site2 == sites_on_logical_path, axis=1).any():
+                    append_logical += 1
+            # check if the bond is fully contained in the logical path
+            if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(bond.site2 == sites_on_logical_path, axis=1).any():
+                append_logical += 1
+            logical_operator_string.append(logical_operator_pauli_type if append_logical%2 else 'I')
+        logical_operator_string = ''.join(logical_operator_string)
+
+
+
+        # if self.num_sites_x == 9:
+        #     logical_operator_string = 'IXXIXXIXIXXIXIXXIX'
+        # elif self.num_sites_x == 6:
+        #     logical_operator_string = 'IXXIXIXXIXIX'
         # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
         all_sites = [[ix, iy, s]
                      for ix in range(self.num_sites_x)
@@ -142,35 +163,15 @@ class FloquetCode:
         circ.append_operation("H", x_initialized)
         circ.append_operation("H_YZ", y_initialized)
 
-        stabilizer = StabilizerGroup()
-
         i_meas = 0
         measurements_to_include_in_logical = set()
         for rep in range(reps):
             for ibond, bond in enumerate(self.bonds):
-                # check if logical operator anticommutes with the bond, if it does, multiply it by another bond in the stabilizer that anticommutes with the bond
-                # if logical_pauli.anticommutes(self.bond_to_full_pauli(bond)):
-                #     # self.draw_pauli(logical_pauli)
-                #     anticommuting_generators = [p for p in stabilizer.paulis if
-                #                                 p.pauli.anticommutes(self.bond_to_full_pauli(bond))]
-                #     if len(anticommuting_generators) == 0:
-                #         raise ValueError('Logical operator anticommutes with a bond that is not in the stabilizer')
-                #     # choose the minimal weight generator
-                #     p = min(anticommuting_generators,
-                #             key=lambda p: len(p.index))  #pauli_weight(logical_pauli.compose(p.pauli)))
-                #     logical_pauli = logical_pauli.compose(p.pauli)
-                #     # update the observable with the last index at which b was measured
-                #     # the measurements_to_include is the union minus the intersection with the new measurements
-                #     measurements_to_include_in_logical = measurements_to_include_in_logical.union(
-                #         p.index) - measurements_to_include_in_logical.intersection(p.index)
 
-                #update bonds in stabilizer by adding the current bond and removing overlapping bonds
-                stabilizer.measure_pauli(PauliMeasurement(self.bond_to_full_pauli(bond), [i_meas]))
-                print(len(stabilizer.paulis))
 
                 qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
-                if before_parity_measure_2q_depolarization is not None and rep >= reps_without_noise and rep < reps - reps_without_noise:
-                    circ.append_operation("DEPOLARIZE1", qubit_pair, before_parity_measure_2q_depolarization)
+                if noise_rate is not None and rep >= reps_without_noise and rep < reps - reps_without_noise:
+                    circ.append_operation(noise_type, qubit_pair, noise_rate)
                 circ.append('M' + bond.pauli_label, qubit_pair)
                 bond.measurement_indexes.append(i_meas)
 
@@ -184,21 +185,29 @@ class FloquetCode:
                 i_meas += 1
 
         # add detectors
-        for plaq in self.plaquettes:
-            n_bonds = len(plaq.bonds)
-            plaq_measurement_idx = plaq.measurement_indexes()
-            plaq_coords = plaq.coords
-            rep = 0
-            for i in range(len(plaq_measurement_idx) - n_bonds + 1):
-                record_targets = [stim.target_rec(plaq_measurement_idx[j] - i_meas) for j in range(i, i + n_bonds)]
-                new_circ = circ.copy()
-                new_circ.append_operation("DETECTOR", record_targets, [plaq_coords[0], plaq_coords[1], rep])
-                try:
-                    new_circ.detector_error_model(decompose_errors=True)
-                    circ = new_circ
-                    rep += 1
-                except:
-                    pass
+        if detector_indexes is not None and detector_args is not None:
+            for i, indexes in enumerate(detector_indexes):
+                circ.append_operation("DETECTOR", list(map(stim.target_rec, indexes)), detector_args[i])
+        else:
+            detector_indexes = []
+            detector_args = []
+            for plaq in self.plaquettes:
+                n_bonds = len(plaq.bonds)
+                plaq_measurement_idx = plaq.measurement_indexes()
+                plaq_coords = plaq.coords
+                rep = 0
+                for i in range(len(plaq_measurement_idx) - n_bonds + 1):
+                    record_targets = [stim.target_rec(plaq_measurement_idx[j] - i_meas) for j in range(i, i + n_bonds)]
+                    new_circ = circ.copy()
+                    new_circ.append_operation("DETECTOR", record_targets, [plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label=='X'])
+                    try:
+                        new_circ.detector_error_model(decompose_errors=True)
+                        circ = new_circ
+                        detector_indexes.append([plaq_measurement_idx[j] - i_meas for j in range(i, i + n_bonds)])
+                        detector_args.append([plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label=='X'])
+                        rep += 1
+                    except:
+                        pass
 
         # include measurements in the dynamics of the observable
         for i_to_include in measurements_to_include_in_logical:
@@ -216,7 +225,7 @@ class FloquetCode:
                               [stim.target_rec(i - observable_length)
                                for i in range(observable_length)],
                               0)
-        return circ
+        return circ, detector_indexes, detector_args
 
     def site_to_index(self, site):
         return np.ravel_multi_index(site, (self.num_sites_x, self.num_sites_y, 2))
@@ -316,19 +325,24 @@ class Plaquette:
         return sorted(all_indexes)
 
 
-d_list = [3,6]
-phys_err_rate_list = [0.001, 0.3]  #np.linspace(0.,0.15, 15)#[0.01]# #0.03 #
+d_list = [6]
+phys_err_rate_list = [0.003, 0.01, 0.03]  #np.linspace(0.,0.15, 15)#[0.01]# #0.03 #
 shots = 100000
 log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
 reps = 12
 reps_without_noise = 4
+noise_type = 'DEPOLARIZE1'
 
 for id, d in enumerate(d_list):
+    detector_indexes = None
+    detector_args = None
     for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
-        code = FloquetCode(d, 3, boundary_conditions=('periodic','periodic'), vortex_location=None, vortex_sign=1)
-        circ = code.get_circuit(reps=reps, reps_without_noise=reps_without_noise,
-                                before_parity_measure_2q_depolarization=phys_err_rate,
-                                logical_operator_color='red', logical_operator_pauli_type='Z', logical_operator_direction='x')  #'
+        code = FloquetCode(d, 3, boundary_conditions=('periodic','periodic'), vortex_location='x', vortex_sign=1)
+        circ, detector_indexes, detector_args = code.get_circuit(
+            reps=reps, reps_without_noise=reps_without_noise,
+            noise_rate=phys_err_rate, noise_type=noise_type,
+            logical_operator_color='blue', logical_operator_pauli_type='X', logical_operator_direction='y',
+            detector_indexes=detector_indexes, detector_args=detector_args)
         # blue, X, x
         # blue, X, y
         # red, Z, x
