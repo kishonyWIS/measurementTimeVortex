@@ -1,3 +1,4 @@
+import os
 from typing import Optional
 
 import stim
@@ -6,26 +7,27 @@ from matplotlib import pyplot as plt, patches
 import pymatching
 from itertools import chain
 from qiskit.quantum_info import Pauli
-import pickle
+import pandas as pd
 from simple_stabilizer import StabilizerGroup, PauliMeasurement
+
 
 def site_to_physical_location(site):
     x = np.sqrt(3) * site[0] + np.sqrt(3) / 2 * site[1] + np.sqrt(3) / 2 * site[2]
     y = 1.5 * site[1] + 0.5 * site[2]
     return x, y
 
+
 def cyclic_permute(s, n=1):
     """Cyclically permute the string `s` by `n` positions."""
     n = n % len(s)  # Ensure n is within the bounds of the string length
     return s[n:] + s[:n]
 
+
 class FloquetCode:
-    def __init__(self, num_sites_x, num_sites_y, vortex_location=None, boundary_conditions=('periodic', 'periodic'),
-                 vortex_sign=-1):
+    def __init__(self, num_sites_x, num_sites_y, num_vortexes=(0, 0), boundary_conditions=('periodic', 'periodic')):
         self.num_sites_x = num_sites_x
         self.num_sites_y = num_sites_y
-        self.vortex_location = vortex_location
-        self.vortex_sign = vortex_sign
+        self.num_vortexes = num_vortexes
         self.boundary_conditions = boundary_conditions
         self.bonds = self.get_bonds()
         self.plaquettes = self.get_plaquettes()
@@ -79,19 +81,14 @@ class FloquetCode:
                     plaquettes.append(Plaquette(sites, [ix, iy], pauli_label))
         return plaquettes
 
+    def location_dependent_delay(self, site):
+        return site[0] / self.num_sites_x * self.num_vortexes[0] + site[1] / self.num_sites_y * self.num_vortexes[1]
+
     def get_bond_order(self, site1, direction, pauli_label):
         site_midpoint = site1 + direction / 2
         color = self.get_bond_color(direction, site1)
-        order_without_vortex = (-color/3 + (pauli_label == 'ZZ')/2) % 1
-
-        if self.vortex_location == 'x':
-            location_dependent_delay = lambda site: site[0] / self.num_sites_x
-        elif self.vortex_location == 'y':
-            location_dependent_delay = lambda site: site[1] / self.num_sites_y
-        else:
-            location_dependent_delay = lambda site: 0
-
-        order = order_without_vortex + location_dependent_delay(site_midpoint) * self.vortex_sign
+        order_without_vortex = (-color / 3 + (pauli_label == 'ZZ') / 2) % 1
+        order = order_without_vortex + self.location_dependent_delay(site_midpoint)
         order = order % 1
         return order
 
@@ -117,17 +114,20 @@ class FloquetCode:
 
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
-            bonds_connected_to_site = [bond for bond in self.bonds if np.all(bond.site1 == site) or np.all(bond.site2 == site)]
-            append_logical = 0 # 0: I, 1: logical_operator_pauli_type
+            bonds_connected_to_site = [bond for bond in self.bonds if
+                                       np.all(bond.site1 == site) or np.all(bond.site2 == site)]
+            append_logical = 0  # 0: I, 1: logical_operator_pauli_type
             for bond in bonds_connected_to_site:
                 if bond.pauli_label[0] != logical_operator_pauli_type:
                     break
-                if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(bond.site2 == sites_on_logical_path, axis=1).any():
+                if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(
+                        bond.site2 == sites_on_logical_path, axis=1).any():
                     append_logical += 1
             # check if the bond is fully contained in the logical path
-            if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(bond.site2 == sites_on_logical_path, axis=1).any():
+            if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(bond.site2 == sites_on_logical_path,
+                                                                                    axis=1).any():
                 append_logical += 1
-            logical_operator_string.append(logical_operator_pauli_type if append_logical%2 else 'I')
+            logical_operator_string.append(logical_operator_pauli_type if append_logical % 2 else 'I')
         logical_operator_string = ''.join(logical_operator_string)
 
         # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
@@ -144,7 +144,7 @@ class FloquetCode:
                 full_logical_operator_string.append('I')
         full_logical_operator_string = ''.join(full_logical_operator_string)
         logical_pauli = Pauli(full_logical_operator_string)
-        self.draw_pauli(logical_pauli)
+        # self.draw_pauli(logical_pauli)
 
         # indexes where the logical operator is X, Y, Z
         x_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'X']
@@ -194,12 +194,13 @@ class FloquetCode:
                 for i in range(len(plaq_measurement_idx) - n_bonds + 1):
                     record_targets = [stim.target_rec(plaq_measurement_idx[j] - i_meas) for j in range(i, i + n_bonds)]
                     new_circ = circ.copy()
-                    new_circ.append_operation("DETECTOR", record_targets, [plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label=='X'])
+                    new_circ.append_operation("DETECTOR", record_targets,
+                                              [plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label == 'X'])
                     try:
                         new_circ.detector_error_model(decompose_errors=True)
                         circ = new_circ
                         detector_indexes.append([plaq_measurement_idx[j] - i_meas for j in range(i, i + n_bonds)])
-                        detector_args.append([plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label=='X'])
+                        detector_args.append([plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label == 'X'])
                         rep += 1
                     except:
                         pass
@@ -258,16 +259,17 @@ class FloquetCode:
             site1, site2 = bond.site1.copy(), bond.site2.copy()
             x1, y1 = site_to_physical_location(bond.site1)
             if np.linalg.norm(site1[0] - site2[0]) > 1:
-                site2 = site2 + np.array([self.num_sites_x,0,0])
+                site2 = site2 + np.array([self.num_sites_x, 0, 0])
             if np.linalg.norm(site1[1] - site2[1]) > 1:
-                site2 = site2 + np.array([0,self.num_sites_y,0])
+                site2 = site2 + np.array([0, self.num_sites_y, 0])
             x2, y2 = site_to_physical_location(site2)
             ax.plot([x1, x2], [y1, y2], 'k')
             x = (x1 + x2) / 2
             y = (y1 + y2) / 2
             fontsize = 10
-            y = y + (bond.pauli_label == 'XX')*0.2 - (bond.pauli_label == 'ZZ')*0.2
-            ax.text(x, y, '{:.1f}'.format(bond.order*6) + bond.pauli_label, fontsize=fontsize, ha='center', va='center')
+            y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
+            ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center',
+                    va='center')
         for i, pp in enumerate(pauli[::-1]):
             p = pp.to_label()
             site = self.index_to_site(i)
@@ -319,33 +321,34 @@ class Plaquette:
         all_indexes = list(chain(*all_indexes))
         return sorted(all_indexes)
 
+if __name__ == '__main__':
 
-d_list = [6]
-phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
-shots = 100000
-log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
-reps = 12
-reps_without_noise = 4
-noise_type = 'DEPOLARIZE2'
-boundary_conditions = ('periodic', 'periodic')
+    d_list = [9]
+    phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
+    shots = 100000
+    log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
+    reps = 12
+    reps_without_noise = 4
+    noise_type = 'DEPOLARIZE2'
+    boundary_conditions = ('periodic', 'periodic')
 
-
-for vortex_location in ['x',None]:
-    for vortex_sign in [1]:
+    for num_vortexes in [(2, 0)]:#, (1, 0)
         for logical_operator_pauli_type in ['X']:
-            for logical_operator_direction in ['x', 'y']:
-                print(f'vortex_location: {vortex_location}, vortex_sign: {vortex_sign}, logical_operator_pauli_type: {logical_operator_pauli_type}, logical_operator_direction: {logical_operator_direction}')
+            for logical_operator_direction in ['x', 'y']:#, 'y'
+                print(
+                    f'num_vortexes: {num_vortexes}, logical_operator_pauli_type: {logical_operator_pauli_type}, logical_operator_direction: {logical_operator_direction}')
 
                 for id, d in enumerate(d_list):
                     detector_indexes = None
                     detector_args = None
+                    code = FloquetCode(d, d, boundary_conditions=boundary_conditions,
+                                       num_vortexes=num_vortexes)
                     for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
-                        code = FloquetCode(d, d, boundary_conditions=boundary_conditions,
-                                           vortex_location=vortex_location, vortex_sign=vortex_sign)
                         circ, detector_indexes, detector_args = code.get_circuit(
                             reps=reps, reps_without_noise=reps_without_noise,
                             noise_rate=phys_err_rate, noise_type=noise_type,
-                            logical_operator_pauli_type=logical_operator_pauli_type, logical_operator_direction=logical_operator_direction,
+                            logical_operator_pauli_type=logical_operator_pauli_type,
+                            logical_operator_direction=logical_operator_direction,
                             detector_indexes=detector_indexes, detector_args=detector_args)
                         model = circ.detector_error_model(decompose_errors=True)
                         matching = pymatching.Matching.from_detector_error_model(model)
@@ -369,9 +372,24 @@ for vortex_location in ['x',None]:
                 plt.xscale('log')
                 plt.legend(d_list, title='code size')
                 plt.tight_layout()
-                plt.savefig(f'figures/threshold_noisetype_{noise_type}_logical_operator_{logical_operator_pauli_type}_direction_{logical_operator_direction}_boundary_conditions_{boundary_conditions}_vortex_{vortex_location}_{vortex_sign}.pdf')
-                #save the data for the figure (d_list, phys_err_rate_list, log_err_rate)
-                with open(f'data/threshold_noisetype_{noise_type}_logical_operator_{logical_operator_pauli_type}_direction_{logical_operator_direction}_boundary_conditions_{boundary_conditions}_vortex_{vortex_location}_{vortex_sign}.pkl', 'wb') as f:
-                    pickle.dump({'d_list': d_list, 'phys_err_rate_list': phys_err_rate_list, 'log_err_rate': log_err_rate}, f)
-
+                plt.savefig(
+                    f'figures/threshold_noisetype_{noise_type}_logical_operator_{logical_operator_pauli_type}_direction_{logical_operator_direction}_boundary_conditions_{boundary_conditions}_num_vortexes_{num_vortexes}.pdf')
+                # save data to a csv file using pandas. append a new line for each data point
+                rows = []
+                for id, d in enumerate(d_list):
+                    for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
+                        rows.append({
+                            'd': d,
+                            'phys_err_rate': phys_err_rate,
+                            'log_err_rate': log_err_rate[id, ierr_rate],
+                            'logical_operator_pauli_type': logical_operator_pauli_type,
+                            'logical_operator_direction': logical_operator_direction,
+                            'boundary_conditions': boundary_conditions,
+                            'num_vortexes': num_vortexes,
+                            'noise_type': noise_type,
+                            'shots': shots,
+                        })
+                df = pd.DataFrame(rows)
+                # append to the csv file if exists, otherwise create a new file
+                df.to_csv('data/threshold.csv', mode='a', header=not os.path.exists('data/threshold.csv'))
                 # plt.show()
