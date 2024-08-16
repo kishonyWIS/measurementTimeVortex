@@ -7,6 +7,7 @@ import pymatching
 from itertools import chain
 from qiskit.quantum_info import Pauli
 import pickle
+from simple_stabilizer import StabilizerGroup, PauliMeasurement
 
 def site_to_physical_location(site):
     x = np.sqrt(3) * site[0] + np.sqrt(3) / 2 * site[1] + np.sqrt(3) / 2 * site[2]
@@ -143,7 +144,7 @@ class FloquetCode:
                 full_logical_operator_string.append('I')
         full_logical_operator_string = ''.join(full_logical_operator_string)
         logical_pauli = Pauli(full_logical_operator_string)
-        # self.draw_pauli(logical_pauli)
+        self.draw_pauli(logical_pauli)
 
         # indexes where the logical operator is X, Y, Z
         x_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'X']
@@ -153,11 +154,15 @@ class FloquetCode:
         circ.append_operation("H", x_initialized)
         circ.append_operation("H_YZ", y_initialized)
 
+        # stabilizer = StabilizerGroup()
+
         i_meas = 0
         measurements_to_include_in_logical = set()
         for rep in range(reps):
             for ibond, bond in enumerate(self.bonds):
 
+                # stabilizer.measure_pauli(PauliMeasurement(self.bond_to_full_pauli(bond), [i_meas]))
+                # print(len(stabilizer.paulis))
 
                 qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
                 if noise_rate is not None and rep >= reps_without_noise and rep < reps - reps_without_noise:
@@ -315,24 +320,19 @@ class Plaquette:
         return sorted(all_indexes)
 
 
-d_list = [6,9]
-phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]  #np.linspace(0.,0.15, 15)#[0.01]# #0.03 #
+d_list = [6]
+phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
 shots = 100000
 log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
 reps = 12
 reps_without_noise = 4
-noise_type = 'DEPOLARIZE1'
+noise_type = 'DEPOLARIZE2'
 boundary_conditions = ('periodic', 'periodic')
 
-# vortex_location = 'x'
-# vortex_sign = 1
-# logical_operator_pauli_type = 'X'
-# logical_operator_direction = 'y'
 
-
-for vortex_location in ['x', None]:
-    for vortex_sign in [1, -1]:
-        for logical_operator_pauli_type in ['X', 'Z']:
+for vortex_location in ['x',None]:
+    for vortex_sign in [1]:
+        for logical_operator_pauli_type in ['X']:
             for logical_operator_direction in ['x', 'y']:
                 print(f'vortex_location: {vortex_location}, vortex_sign: {vortex_sign}, logical_operator_pauli_type: {logical_operator_pauli_type}, logical_operator_direction: {logical_operator_direction}')
 

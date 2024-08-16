@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import matplotlib.cm as cm
 import re
+from plot_utils import *
+import mpld3
 
 # Directory where the pickle files are saved
 data_dir = 'data'
@@ -68,7 +70,7 @@ marker_column = 'logical_operator_direction'  # This can be 'logical_operator_di
 plt.figure()
 
 # Filter the DataFrame to only include X logical operators and vortex_sign = '1'
-df = df.query('logical_operator_pauli_type == "X" and vortex_sign == "1"')
+df = df.query('logical_operator_pauli_type == "X" and vortex_sign == "1" and noise_type == "DEPOLARIZE1"')
 
 # Group by the chosen columns and plot each group
 for (color_val, linestyle_val, marker_val), group in df.groupby([color_column, linestyle_column, marker_column]):
@@ -90,8 +92,12 @@ plt.xlabel('physical error rate')
 plt.ylabel('logical error rate')
 plt.yscale('log')
 plt.xscale('log')
-plt.legend(title=f'{color_column}, {linestyle_column}, {marker_column}', ncol=2)
-plt.tight_layout()
+plt.legend(title=f'{color_column}, vortex_direction, {marker_column}', ncol=2)
+edit_graph('Physical Error Rate', 'Logical Error Rate',
+           scale=1.5)
 
 # Show the plot
+plt.savefig('figures/threshold.pdf')
+
+
 plt.show()
