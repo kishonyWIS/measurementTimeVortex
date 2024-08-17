@@ -9,51 +9,6 @@ import re
 from plot_utils import *
 import mpld3
 
-# Directory where the pickle files are saved
-data_dir = 'data'
-
-# Regular expression pattern to extract parameters from filenames
-pattern = re.compile(
-    r'threshold_noisetype_(?P<noise_type>[^_]+)_'
-    r'logical_operator_(?P<logical_operator_pauli_type>[^_]+)_'
-    r'direction_(?P<logical_operator_direction>[^_]+)_'
-    r'boundary_conditions_(?P<boundary_conditions>[^_]+)_'
-    r'vortex_(?P<vortex_location>[^_]+)_(?P<vortex_sign>[^_]+)\.pkl'
-)
-
-# Initialize an empty list to collect rows of data for the DataFrame
-rows = []
-
-# Loop through all the pickle files in the data directory
-for filename in os.listdir(data_dir):
-    if filename.endswith('.pkl'):
-        filepath = os.path.join(data_dir, filename)
-        with open(filepath, 'rb') as f:
-            data = pickle.load(f)
-
-        # Extract parameters from the filename using regex
-        match = pattern.match(filename)
-        if match:
-            params = match.groupdict()
-        else:
-            raise ValueError(f'Filename format not recognized: {filename}')
-
-        # Get data from the loaded pickle file
-        d_list = data['d_list']
-        log_err_rate = data['log_err_rate']
-
-        # Add data rows for the DataFrame
-        for id, d in enumerate(d_list):
-            for ierr_rate, phys_err_rate in enumerate(data['phys_err_rate_list']):
-                rows.append({
-                    'd': d,
-                    'phys_err_rate': phys_err_rate,
-                    'log_err_rate': log_err_rate[id, ierr_rate],
-                    **params  # Include all extracted parameters
-                })
-
-# Convert the collected rows into a DataFrame
-df = pd.DataFrame(rows)
 
 def parse_tuple(value):
     return ast.literal_eval(value)
@@ -64,12 +19,11 @@ df = pd.read_csv('data/threshold.csv', converters={'num_vortexes': parse_tuple})
 # Display the first few rows of the DataFrame for verification
 print(df.head())
 
-# Create a color map for different code sizes
-unique_d_list = sorted(df['d'].unique())
-color_map = cm.get_cmap('viridis', len(unique_d_list))
-
 # Choose which column to use for color and linestyle
 color_column = 'd'  # This can be 'd' or another column
+# Create a color map for different code sizes
+unique_d_list = sorted(df[color_column].unique())
+color_map = cm.get_cmap('viridis', len(unique_d_list))
 linestyle_column = 'num_vortexes'  # This can be 'vortex_location' or another column
 marker_column = 'logical_operator_direction'  # This can be 'logical_operator_direction' or another column
 
@@ -77,7 +31,38 @@ marker_column = 'logical_operator_direction'  # This can be 'logical_operator_di
 plt.figure()
 
 # Filter the DataFrame to only include X logical operators and vortex_sign = '1'
-df = df.query('logical_operator_pauli_type == "X" and noise_type == "DEPOLARIZE2"')
+df = df.query('logical_operator_pauli_type == "X" and noise_type == "DEPOLARIZE2" and d == 9')
+# draw pcolor of the logical error rate at the minimal physical error rate as a function of num_vortexes[0] and num_vortexes[1]
+df = df.query('phys_err_rate == phys_err_rate.min()')
+
+df[['vortex_x', 'vortex_y']] = pd.DataFrame(df['num_vortexes'].tolist(), index=df.index)
+
+# Loop through the logical_operator_direction values ('x' and 'y')
+for direction in df['logical_operator_direction'].unique():
+    # Filter the DataFrame for the current direction
+    df_filtered = df[df['logical_operator_direction'] == direction]
+
+    # Create a pivot table for plotting
+    # Index: vortex_x, Columns: vortex_y, Values: log_err_rate
+    pivot_table = df_filtered.pivot(index='vortex_x', columns='vortex_y', values='log_err_rate')
+
+    # Create the plot
+    plt.figure()
+    plt.pcolor(pivot_table.columns, pivot_table.index, pivot_table.values, shading='auto', cmap='viridis')
+    plt.colorbar(label='log_err_rate')
+    plt.xlabel('vortex_y')
+    plt.ylabel('vortex_x')
+    plt.title(f'log_err_rate for direction: {direction}')
+
+plt.show()
+
+
+
+
+
+
+
+
 
 # Group by the chosen columns and plot each group
 for (color_val, linestyle_val, marker_val), group in df.groupby([color_column, linestyle_column, marker_column]):
@@ -94,10 +79,9 @@ for (color_val, linestyle_val, marker_val), group in df.groupby([color_column, l
     group = group.sort_values(by='phys_err_rate')
 
     plt.errorbar(group['phys_err_rate'], group['log_err_rate'],
-                 np.sqrt(group['log_err_rate'] * (1 - group['log_err_rate']) / 100000),
-                 # Replace shots=100000 if needed
+                 np.sqrt(group['log_err_rate'] * (1 - group['log_err_rate']) / group['shots']),
                  label=f'{color_val}, {linestyle_val}, {marker_val}',
-                 linestyle=linestyle, color=color, marker=marker)  # Add marker for clarity
+                 linestyle=linestyle, marker=marker)#, color=color)  # Add marker for clarity
 
 # Customize the plot
 plt.xlabel('physical error rate')

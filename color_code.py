@@ -8,6 +8,7 @@ import pymatching
 from itertools import chain
 from qiskit.quantum_info import Pauli
 import pandas as pd
+from honeycomb_threshold.src.noise import NoiseModel
 from simple_stabilizer import StabilizerGroup, PauliMeasurement
 
 
@@ -144,7 +145,7 @@ class FloquetCode:
                 full_logical_operator_string.append('I')
         full_logical_operator_string = ''.join(full_logical_operator_string)
         logical_pauli = Pauli(full_logical_operator_string)
-        # self.draw_pauli(logical_pauli)
+        self.draw_pauli(logical_pauli)
 
         # indexes where the logical operator is X, Y, Z
         x_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'X']
@@ -323,7 +324,7 @@ class Plaquette:
 
 if __name__ == '__main__':
 
-    d_list = [9]
+    d_list = [6,9]
     phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
     shots = 100000
     log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
@@ -332,9 +333,9 @@ if __name__ == '__main__':
     noise_type = 'DEPOLARIZE2'
     boundary_conditions = ('periodic', 'periodic')
 
-    for num_vortexes in [(2, 0)]:#, (1, 0)
+    for num_vortexes in [(0,0)]:#, (1, 0)
         for logical_operator_pauli_type in ['X']:
-            for logical_operator_direction in ['x', 'y']:#, 'y'
+            for logical_operator_direction in ['x']:#, 'y'
                 print(
                     f'num_vortexes: {num_vortexes}, logical_operator_pauli_type: {logical_operator_pauli_type}, logical_operator_direction: {logical_operator_direction}')
 
