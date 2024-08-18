@@ -104,66 +104,28 @@ class FloquetCode:
         return [[ix, iy, s] for ix in range(self.num_sites_x) for iy in range(self.num_sites_y) for s in [0, 1]]
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_rate=0.01, noise_type=None,
-                    logical_operator_pauli_type='X', logical_operator_direction='x',
+                    logical_operator_pauli_type='X', logical_op_directions=['x', 'y'],
                     detector_indexes=None, detector_args=None):
         # assert reps % 2 == 0
         circ = stim.Circuit()
         for bond in self.bonds:
             bond.measurement_indexes = []
 
-        if logical_operator_direction == 'x':
-            sites_on_logical_path = [[ix, iy, s]
-                                     for ix in range(self.num_sites_x)
-                                     for iy in [0]
-                                     for s in [0, 1]]
-        elif logical_operator_direction == 'y':
-            sites_on_logical_path = [[ix, iy, s]
-                                     for ix in [0]
-                                     for iy in range(self.num_sites_y)
-                                     for s in [0, 1]]
+        logical_operators = dict()
+        for i_logical, logical_operator_direction in enumerate(logical_op_directions):
+            logical_pauli, sites_on_logical_path = self.get_logical_operator(logical_operator_direction,
+                                                                             logical_operator_pauli_type)
+            logical_operators[logical_operator_direction] = {'logical_pauli': logical_pauli,
+                                                             'sites_on_logical_path': sites_on_logical_path,
+                                                             'measurements_to_include': set(),
+                                                             'index': i_logical}
 
-        logical_operator_string = []
-        for i_along_path, site in enumerate(sites_on_logical_path):
-            bonds_connected_to_site = [bond for bond in self.bonds if
-                                       np.all(bond.site1 == site) or np.all(bond.site2 == site)]
-            append_logical = 0  # 0: I, 1: logical_operator_pauli_type
-            for bond in bonds_connected_to_site:
-                if bond.pauli_label[0] != logical_operator_pauli_type:
-                    break
-                if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(
-                        bond.site2 == sites_on_logical_path, axis=1).any():
-                    append_logical += 1
-            # check if the bond is fully contained in the logical path
-            if np.all(bond.site1 == sites_on_logical_path, axis=1).any() and np.all(bond.site2 == sites_on_logical_path,
-                                                                                    axis=1).any():
-                append_logical += 1
-            logical_operator_string.append(logical_operator_pauli_type if append_logical % 2 else 'I')
-        logical_operator_string = ''.join(logical_operator_string)
-
-        # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
-
-        full_logical_operator_string = []
-        for site in self.all_sites():
-            if site in sites_on_logical_path:
-                full_logical_operator_string.append(logical_operator_string[sites_on_logical_path.index(site)])
-            else:
-                full_logical_operator_string.append('I')
-        full_logical_operator_string = ''.join(full_logical_operator_string)
-        logical_pauli = Pauli(full_logical_operator_string)
-        # self.draw_pauli(logical_pauli)
-
-        # indexes where the logical operator is X, Y, Z
-        x_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'X']
-        y_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'Y']
-        z_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'Z']
-
-        circ.append_operation("H", x_initialized)
-        circ.append_operation("H_YZ", y_initialized)
+        if logical_operator_pauli_type == 'X':
+            circ.append_operation("H", list(range(self.num_data_qubits())))
 
         # stabilizer = StabilizerGroup()
 
         i_meas = 0
-        measurements_to_include_in_logical = set()
         for rep in range(reps):
             for ibond, bond in enumerate(self.bonds):
 
@@ -189,12 +151,13 @@ class FloquetCode:
                 bond.measurement_indexes.append(i_meas)
 
                 # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
-                if (np.all(bond.site1 == sites_on_logical_path, axis=1).any() and
-                        np.all(bond.site2 == sites_on_logical_path, axis=1).any() and
-                        bond.pauli_label[0] == logical_operator_pauli_type):
-                    # self.draw_pauli(logical_pauli)
-                    measurements_to_include_in_logical.add(i_meas)
-                    logical_pauli = logical_pauli.compose(self.bond_to_full_pauli(bond))
+                for direction, logical in logical_operators.items():
+                    if (self.bond_in_path(bond, logical['sites_on_logical_path']) and
+                            bond.pauli_label[0] == logical_operator_pauli_type):
+                        # self.draw_pauli(logical_pauli)
+                        logical['measurements_to_include'].add(i_meas)
+                        logical['logical_pauli'] = (
+                            logical['logical_pauli'].compose(self.bond_to_full_pauli(bond)))
                 i_meas += 1
 
         # add detectors
@@ -224,22 +187,68 @@ class FloquetCode:
                         pass
 
         # include measurements in the dynamics of the observable
-        for i_to_include in measurements_to_include_in_logical:
-            circ.append_operation("OBSERVABLE_INCLUDE", stim.target_rec(i_to_include - i_meas), 0)
+        for direction, logical in logical_operators.items():
+            for i_to_include in logical['measurements_to_include']:
+                circ.append_operation("OBSERVABLE_INCLUDE", stim.target_rec(i_to_include - i_meas),
+                                      logical['index'])
 
         # Finish circuit with data measurements according to logical operator
-        x_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'X']
-        y_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'Y']
-        z_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'Z']
-        circ.append_operation("MX", x_finalized)
-        circ.append_operation("MY", y_finalized)
-        circ.append_operation("MZ", z_finalized)
-        observable_length = len(x_finalized) + len(y_finalized) + len(z_finalized)
-        circ.append_operation("OBSERVABLE_INCLUDE",
-                              [stim.target_rec(i - observable_length)
-                               for i in range(observable_length)],
-                              0)
+        for direction, logical in logical_operators.items():
+            logical_pauli = logical['logical_pauli']
+            x_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'X']
+            y_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'Y']
+            z_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'Z']
+            circ.append_operation("MX", x_finalized)
+            circ.append_operation("MY", y_finalized)
+            circ.append_operation("MZ", z_finalized)
+            observable_length = len(x_finalized) + len(y_finalized) + len(z_finalized)
+            circ.append_operation("OBSERVABLE_INCLUDE",
+                                  [stim.target_rec(i - observable_length)
+                                   for i in range(observable_length)],
+                                  logical['index'])
         return circ, detector_indexes, detector_args
+
+    def bond_in_path(self, bond, sites_on_path):
+        return np.all(bond.site1 == sites_on_path, axis=1).any() and np.all(bond.site2 == sites_on_path, axis=1).any()
+
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
+        if logical_operator_direction == 'x':
+            sites_on_logical_path = [[ix, iy, s]
+                                     for ix in range(self.num_sites_x)
+                                     for iy in [0]
+                                     for s in [0, 1]]
+        elif logical_operator_direction == 'y':
+            sites_on_logical_path = [[ix, iy, s]
+                                     for ix in [0]
+                                     for iy in range(self.num_sites_y)
+                                     for s in [0, 1]]
+        logical_operator_string = []
+        for i_along_path, site in enumerate(sites_on_logical_path):
+            bonds_connected_to_site = [bond for bond in self.bonds if
+                                       np.all(bond.site1 == site) or np.all(bond.site2 == site)]
+            append_logical = 0  # 0: I, 1: logical_operator_pauli_type
+            for bond in bonds_connected_to_site:
+                if bond.pauli_label[0] != logical_operator_pauli_type:
+                    break
+                if self.bond_in_path(bond, sites_on_logical_path):
+                    append_logical += 1
+            # check if the bond is fully contained in the logical path
+            if self.bond_in_path(bond, sites_on_logical_path):
+                append_logical += 1
+            logical_operator_string.append(logical_operator_pauli_type if append_logical % 2 else 'I')
+        logical_operator_string = ''.join(logical_operator_string)
+        # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
+        full_logical_operator_string = []
+        for site in self.all_sites():
+            if site in sites_on_logical_path:
+                full_logical_operator_string.append(logical_operator_string[sites_on_logical_path.index(site)])
+            else:
+                full_logical_operator_string.append('I')
+        full_logical_operator_string = ''.join(full_logical_operator_string)
+        logical_pauli = Pauli(full_logical_operator_string)
+        if draw:
+            self.draw_pauli(logical_pauli)
+        return logical_pauli, sites_on_logical_path
 
     def site_to_index(self, site):
         return np.ravel_multi_index(site, (self.num_sites_x, self.num_sites_y, 2))
@@ -341,9 +350,8 @@ class Plaquette:
 
 
 def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
-                           logical_operator_direction, boundary_conditions, num_vortexes, get_reps_by_graph_dist=False):
+                           logical_op_directions, boundary_conditions, num_vortexes, get_reps_by_graph_dist=False):
     rows = []
-    log_err_rate = np.zeros((len(phys_err_rate_list)))
     detector_indexes = None
     detector_args = None
     code = FloquetCode(dx, dy, boundary_conditions=boundary_conditions,
@@ -354,7 +362,7 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
             reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
             noise_rate=0.1, noise_type=noise_type,
             logical_operator_pauli_type=logical_operator_pauli_type,
-            logical_operator_direction=logical_operator_direction,
+            logical_op_directions=logical_op_directions,
             detector_indexes=detector_indexes, detector_args=detector_args)
         graph_dist = len(circ.shortest_graphlike_error())
         reps = 3 * graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
@@ -364,14 +372,14 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
 
     print(f'Simulating: dx={dx}, dy={dy}, reps={reps}, reps_without_noise={reps_without_noise}, \n'
           f'noise_type={noise_type}, logical_operator_pauli_type={logical_operator_pauli_type}, \n'
-          f'logical_operator_direction={logical_operator_direction}, boundary_conditions={boundary_conditions}, \n'
+          f'boundary_conditions={boundary_conditions}, \n'
           f'num_vortexes={num_vortexes}, shots={shots}')
     for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
         circ, detector_indexes, detector_args = code.get_circuit(
             reps=reps, reps_without_noise=reps_without_noise,
             noise_rate=phys_err_rate, noise_type=noise_type,
             logical_operator_pauli_type=logical_operator_pauli_type,
-            logical_operator_direction=logical_operator_direction,
+            logical_op_directions=logical_op_directions,
             detector_indexes=detector_indexes, detector_args=detector_args)
         # circ = NoiseModel.EM3_v2(phys_err_rate).noisy_circuit(circ)
         model = circ.detector_error_model(decompose_errors=True)
@@ -380,26 +388,27 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
         syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
 
         predicted_observables = matching.decode_batch(syndrome)
-        num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+        num_errors = np.sum(predicted_observables != actual_observables, axis=0)
 
-        print("logical error_rate", num_errors / shots)
-        log_err_rate[ierr_rate] = num_errors / shots
+        log_err_rate = num_errors / shots
+        print("logical error_rate", log_err_rate)
         # print(circ)
 
-        rows.append({
-            'dx': dx,
-            'dy': dy,
-            'reps_with_noise': reps - 2 * reps_without_noise,
-            'reps_without_noise': reps_without_noise,
-            'phys_err_rate': phys_err_rate,
-            'log_err_rate': log_err_rate[ierr_rate],
-            'logical_operator_pauli_type': logical_operator_pauli_type,
-            'logical_operator_direction': logical_operator_direction,
-            'boundary_conditions': boundary_conditions,
-            'num_vortexes': num_vortexes,
-            'noise_type': noise_type,
-            'shots': shots,
-        })
+        for i_direction, direction in enumerate(logical_op_directions):
+            rows.append({
+                'dx': dx,
+                'dy': dy,
+                'reps_with_noise': reps - 2 * reps_without_noise,
+                'reps_without_noise': reps_without_noise,
+                'phys_err_rate': phys_err_rate,
+                'log_err_rate': log_err_rate[i_direction],
+                'logical_operator_pauli_type': logical_operator_pauli_type,
+                'logical_operator_direction': direction,
+                'boundary_conditions': boundary_conditions,
+                'num_vortexes': num_vortexes,
+                'noise_type': noise_type,
+                'shots': shots,
+            })
     df = pd.DataFrame(rows)
     # append to the csv file if exists, otherwise create a new file
     df.to_csv('data/threshold.csv', mode='a', header=not os.path.exists('data/threshold.csv'))
