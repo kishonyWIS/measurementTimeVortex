@@ -8,8 +8,9 @@ import pymatching
 from itertools import chain
 from qiskit.quantum_info import Pauli
 import pandas as pd
-from honeycomb_threshold.src.noise import NoiseModel
+from honeycomb_threshold.src.noise import NoiseModel, parity_measurement_with_correlated_measurement_noise
 from simple_stabilizer import StabilizerGroup, PauliMeasurement
+from copy import deepcopy as copy
 
 
 def site_to_physical_location(site):
@@ -62,6 +63,9 @@ class FloquetCode:
                 return None
         return shifted_site % np.array([self.num_sites_x, self.num_sites_y, 2])
 
+    def num_data_qubits(self):
+        return self.num_sites_x * self.num_sites_y * 2
+
     def get_plaquettes(self):
         plaquettes = []
         # add hexagonal plaquettes
@@ -96,11 +100,16 @@ class FloquetCode:
     def get_bond_color(self, direction, site1):
         return (site1[0] - site1[1] - direction[0] + direction[1]) % 3
 
+    def all_sites(self):
+        return [[ix, iy, s] for ix in range(self.num_sites_x) for iy in range(self.num_sites_y) for s in [0, 1]]
+
     def get_circuit(self, reps=12, reps_without_noise=4, noise_rate=0.01, noise_type=None,
                     logical_operator_pauli_type='X', logical_operator_direction='x',
                     detector_indexes=None, detector_args=None):
-        assert reps % 2 == 0
+        # assert reps % 2 == 0
         circ = stim.Circuit()
+        for bond in self.bonds:
+            bond.measurement_indexes = []
 
         if logical_operator_direction == 'x':
             sites_on_logical_path = [[ix, iy, s]
@@ -132,20 +141,16 @@ class FloquetCode:
         logical_operator_string = ''.join(logical_operator_string)
 
         # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
-        all_sites = [[ix, iy, s]
-                     for ix in range(self.num_sites_x)
-                     for iy in range(self.num_sites_y)
-                     for s in [0, 1]]
 
         full_logical_operator_string = []
-        for site in all_sites:
+        for site in self.all_sites():
             if site in sites_on_logical_path:
                 full_logical_operator_string.append(logical_operator_string[sites_on_logical_path.index(site)])
             else:
                 full_logical_operator_string.append('I')
         full_logical_operator_string = ''.join(full_logical_operator_string)
         logical_pauli = Pauli(full_logical_operator_string)
-        self.draw_pauli(logical_pauli)
+        # self.draw_pauli(logical_pauli)
 
         # indexes where the logical operator is X, Y, Z
         x_initialized = [i for i, p in enumerate(logical_pauli.to_label()) if p == 'X']
@@ -166,9 +171,21 @@ class FloquetCode:
                 # print(len(stabilizer.paulis))
 
                 qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
-                if noise_rate is not None and rep >= reps_without_noise and rep < reps - reps_without_noise:
-                    circ.append_operation(noise_type, qubit_pair, noise_rate)
-                circ.append('M' + bond.pauli_label, qubit_pair)
+                tp = [[stim.target_x, stim.target_y, stim.target_z]["XYZ".index(p)] for p in bond.pauli_label]
+                if noise_rate is not None and reps_without_noise <= rep < reps - reps_without_noise:
+                    if noise_type == 'parity_measurement_with_correlated_measurement_noise':
+                        circ += parity_measurement_with_correlated_measurement_noise(
+                            t1=tp[0](qubit_pair[0]),
+                            t2=tp[1](qubit_pair[1]),
+                            ancilla=self.num_data_qubits(),
+                            mix_probability=noise_rate)
+                    else:
+                        circ.append_operation(noise_type, qubit_pair, noise_rate)
+                        circ.append_operation("MPP",
+                                              [tp[0](qubit_pair[0]), stim.target_combiner(), tp[1](qubit_pair[1])])
+                else:
+                    circ.append_operation("MPP",
+                                          [tp[0](qubit_pair[0]), stim.target_combiner(), tp[1](qubit_pair[1])])
                 bond.measurement_indexes.append(i_meas)
 
                 # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
@@ -231,7 +248,7 @@ class FloquetCode:
         return np.unravel_index(index, (self.num_sites_x, self.num_sites_y, 2))
 
     def bond_to_full_pauli(self, bond):
-        full_pauli = ['I'] * self.num_sites_x * self.num_sites_y * 2
+        full_pauli = ['I'] * self.num_data_qubits()
         site1_index = self.site_to_index(bond.site1)
         site2_index = self.site_to_index(bond.site2)
         full_pauli[site1_index] = bond.pauli_label[0]
@@ -322,75 +339,69 @@ class Plaquette:
         all_indexes = list(chain(*all_indexes))
         return sorted(all_indexes)
 
-if __name__ == '__main__':
 
-    d_list = [6,9]
-    phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
-    shots = 100000
-    log_err_rate = np.zeros((len(d_list), len(phys_err_rate_list)))
-    reps = 12
-    reps_without_noise = 4
-    noise_type = 'DEPOLARIZE2'
-    boundary_conditions = ('periodic', 'periodic')
+def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
+                           logical_operator_direction, boundary_conditions, num_vortexes, get_reps_by_graph_dist=False):
+    rows = []
+    log_err_rate = np.zeros((len(phys_err_rate_list)))
+    detector_indexes = None
+    detector_args = None
+    code = FloquetCode(dx, dy, boundary_conditions=boundary_conditions,
+                       num_vortexes=num_vortexes)
 
-    for num_vortexes in [(0,0)]:#, (1, 0)
-        for logical_operator_pauli_type in ['X']:
-            for logical_operator_direction in ['x']:#, 'y'
-                print(
-                    f'num_vortexes: {num_vortexes}, logical_operator_pauli_type: {logical_operator_pauli_type}, logical_operator_direction: {logical_operator_direction}')
+    if get_reps_by_graph_dist:
+        circ, _, _ = code.get_circuit(
+            reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
+            noise_rate=0.1, noise_type=noise_type,
+            logical_operator_pauli_type=logical_operator_pauli_type,
+            logical_operator_direction=logical_operator_direction,
+            detector_indexes=detector_indexes, detector_args=detector_args)
+        graph_dist = len(circ.shortest_graphlike_error())
+        reps = 3 * graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
+        print('graph_dist: ', graph_dist)
+    else:
+        reps = 3 * min(dx, dy) + 2 * reps_without_noise  # 3 cycles - init, idle, meas
 
-                for id, d in enumerate(d_list):
-                    detector_indexes = None
-                    detector_args = None
-                    code = FloquetCode(d, d, boundary_conditions=boundary_conditions,
-                                       num_vortexes=num_vortexes)
-                    for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
-                        circ, detector_indexes, detector_args = code.get_circuit(
-                            reps=reps, reps_without_noise=reps_without_noise,
-                            noise_rate=phys_err_rate, noise_type=noise_type,
-                            logical_operator_pauli_type=logical_operator_pauli_type,
-                            logical_operator_direction=logical_operator_direction,
-                            detector_indexes=detector_indexes, detector_args=detector_args)
-                        model = circ.detector_error_model(decompose_errors=True)
-                        matching = pymatching.Matching.from_detector_error_model(model)
-                        sampler = circ.compile_detector_sampler()
-                        syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
+    print(f'Simulating: dx={dx}, dy={dy}, reps={reps}, reps_without_noise={reps_without_noise}, \n'
+          f'noise_type={noise_type}, logical_operator_pauli_type={logical_operator_pauli_type}, \n'
+          f'logical_operator_direction={logical_operator_direction}, boundary_conditions={boundary_conditions}, \n'
+          f'num_vortexes={num_vortexes}, shots={shots}')
+    for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
+        circ, detector_indexes, detector_args = code.get_circuit(
+            reps=reps, reps_without_noise=reps_without_noise,
+            noise_rate=phys_err_rate, noise_type=noise_type,
+            logical_operator_pauli_type=logical_operator_pauli_type,
+            logical_operator_direction=logical_operator_direction,
+            detector_indexes=detector_indexes, detector_args=detector_args)
+        # circ = NoiseModel.EM3_v2(phys_err_rate).noisy_circuit(circ)
+        model = circ.detector_error_model(decompose_errors=True)
+        matching = pymatching.Matching.from_detector_error_model(model)
+        sampler = circ.compile_detector_sampler()
+        syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
 
-                        predicted_observables = matching.decode_batch(syndrome)
-                        num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
+        predicted_observables = matching.decode_batch(syndrome)
+        num_errors = np.sum(np.any(predicted_observables != actual_observables, axis=1))
 
-                        print("logical error_rate", num_errors / shots)
-                        log_err_rate[id, ierr_rate] = num_errors / shots
-                        # print(circ)
+        print("logical error_rate", num_errors / shots)
+        log_err_rate[ierr_rate] = num_errors / shots
+        # print(circ)
 
-                plt.figure()
-                for id in range(len(d_list)):
-                    plt.errorbar(phys_err_rate_list, log_err_rate[id, :],
-                                 np.sqrt(log_err_rate[id, :] * (1 - log_err_rate[id, :]) / shots))
-                plt.xlabel('physical error rate')
-                plt.ylabel('logical error rate')
-                plt.yscale('log')
-                plt.xscale('log')
-                plt.legend(d_list, title='code size')
-                plt.tight_layout()
-                plt.savefig(
-                    f'figures/threshold_noisetype_{noise_type}_logical_operator_{logical_operator_pauli_type}_direction_{logical_operator_direction}_boundary_conditions_{boundary_conditions}_num_vortexes_{num_vortexes}.pdf')
-                # save data to a csv file using pandas. append a new line for each data point
-                rows = []
-                for id, d in enumerate(d_list):
-                    for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
-                        rows.append({
-                            'd': d,
-                            'phys_err_rate': phys_err_rate,
-                            'log_err_rate': log_err_rate[id, ierr_rate],
-                            'logical_operator_pauli_type': logical_operator_pauli_type,
-                            'logical_operator_direction': logical_operator_direction,
-                            'boundary_conditions': boundary_conditions,
-                            'num_vortexes': num_vortexes,
-                            'noise_type': noise_type,
-                            'shots': shots,
-                        })
-                df = pd.DataFrame(rows)
-                # append to the csv file if exists, otherwise create a new file
-                df.to_csv('data/threshold.csv', mode='a', header=not os.path.exists('data/threshold.csv'))
-                # plt.show()
+        rows.append({
+            'dx': dx,
+            'dy': dy,
+            'reps_with_noise': reps - 2 * reps_without_noise,
+            'reps_without_noise': reps_without_noise,
+            'phys_err_rate': phys_err_rate,
+            'log_err_rate': log_err_rate[ierr_rate],
+            'logical_operator_pauli_type': logical_operator_pauli_type,
+            'logical_operator_direction': logical_operator_direction,
+            'boundary_conditions': boundary_conditions,
+            'num_vortexes': num_vortexes,
+            'noise_type': noise_type,
+            'shots': shots,
+        })
+    df = pd.DataFrame(rows)
+    # append to the csv file if exists, otherwise create a new file
+    df.to_csv('data/threshold.csv', mode='a', header=not os.path.exists('data/threshold.csv'))
+
+
