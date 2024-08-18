@@ -35,7 +35,7 @@ marker_column = 'logical_operator_direction'  # This can be 'logical_operator_di
 plt.figure()
 
 # # Filter the DataFrame to only include X logical operators and vortex_sign = '1'
-# df = df.query('logical_operator_pauli_type == "X" and noise_type == "DEPOLARIZE2" and d == 9')
+df = df.query('logical_operator_direction == "x"')
 # # draw pcolor of the logical error rate at the minimal physical error rate as a function of num_vortexes[0] and num_vortexes[1]
 # df = df.query('phys_err_rate == phys_err_rate.min()')
 #
@@ -67,14 +67,15 @@ plt.figure()
 
 
 
-
 # Group by the chosen columns and plot each group
-for (color_val, linestyle_val, marker_val), group in df.groupby([color_column, linestyle_column, marker_column]):
-    if linestyle_val[0] == 0:
+for (color_val, num_vortexes, marker_val), group in df.groupby([color_column, linestyle_column, marker_column]):
+    if num_vortexes == (0,0):
         linestyle = '-'
-    elif linestyle_val[0] == 1:
+    elif num_vortexes == (1,0):
         linestyle = '--'
-    elif linestyle_val[0] == 2:
+    elif num_vortexes == (0,1):
+        linestyle = '-.'
+    else:
         linestyle = ':'
     color = color_map(unique_d_list.index(color_val))  # Color based on code size 'd'
     marker = 'x' if marker_val == 'x' else 's'  # Marker for logical_operator_direction
@@ -84,7 +85,7 @@ for (color_val, linestyle_val, marker_val), group in df.groupby([color_column, l
 
     plt.errorbar(group['phys_err_rate'], group['log_err_rate'],
                  np.sqrt(group['log_err_rate'] * (1 - group['log_err_rate']) / group['shots']),
-                 label=f'{color_val}, {linestyle_val}, {marker_val}',
+                 label=f'{color_val}, {num_vortexes}, {marker_val}',
                  linestyle=linestyle, marker=marker)#, color=color)  # Add marker for clarity
 
 # Customize the plot
