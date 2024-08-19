@@ -14,8 +14,8 @@ from copy import deepcopy as copy
 
 
 def site_to_physical_location(site):
-    x = np.sqrt(3) * site[0] + np.sqrt(3) / 2 * site[1] + np.sqrt(3) / 2 * site[2]
-    y = 1.5 * site[1] + 0.5 * site[2]
+    x = site[0] + site[2]
+    y = 2 * site[1] + site[0] % 2
     return x, y
 
 
@@ -41,7 +41,9 @@ class FloquetCode:
         for ix in range(self.num_sites_x):
             for iy in range(self.num_sites_y):
                 site1 = np.array([ix, iy, 1])
-                for direction in [np.array([0, 0, 1]), np.array([1, 0, 1]), np.array([0, 1, 1])]:
+                directions = [np.array([0, 0, 1]), np.array([1, 0, 1]), np.array([1, -1, 1])] if ix % 2 == 0 else [
+                    np.array([0, 0, 1]), np.array([1, 0, 1]), np.array([1, 1, 1])]
+                for direction in directions:
                     # drop the edge bond if it is not periodic
                     site2 = self.shift_site(site1, direction)
                     if site2 is None:
@@ -69,16 +71,23 @@ class FloquetCode:
     def get_plaquettes(self):
         plaquettes = []
         # add hexagonal plaquettes
-        hex_offsets = np.array([[0, 0, 1],
-                                [0, 1, 0],
-                                [0, 1, 1],
-                                [1, 1, 0],
-                                [1, 0, 1],
-                                [1, 0, 0]])
+        hex_offsets_even = np.array([[0, 0, 1],
+                                     [1, 0 ,0],
+                                     [1, 0, 1],
+                                     [2, 0, 0],
+                                     [1, -1, 1],
+                                     [1, -1, 0]])
+        hex_offsets_odd = np.array([[0, 0, 1],
+                                    [1, 1, 0],
+                                    [1, 1, 1],
+                                    [2, 0, 0],
+                                    [1, 0, 1],
+                                    [1, 0, 0]])
         for ix in range(self.num_sites_x):
             for iy in range(self.num_sites_y):
                 reference_site = np.array([ix, iy, 0])
-                sites = [self.shift_site(reference_site, offset) for offset in hex_offsets]
+                sites = [self.shift_site(reference_site, offset) for offset in
+                         (hex_offsets_even if ix % 2 == 0 else hex_offsets_odd)]
                 # drop the plaquette if it is not periodic
                 if np.any([s is None for s in sites]):
                     continue
@@ -98,13 +107,16 @@ class FloquetCode:
         return order
 
     def get_bond_color(self, direction, site1):
-        return (site1[0] - site1[1] - direction[0] + direction[1]) % 3
+        if site1[0] % 2 == 0:
+            return (-site1[1] + direction[1] - direction[0]) % 3
+        else:
+            return (-site1[1] - 2 - 2*direction[0] - 2*direction[1]) % 3
 
     def all_sites(self):
         return [[ix, iy, s] for ix in range(self.num_sites_x) for iy in range(self.num_sites_y) for s in [0, 1]]
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_rate=0.01, noise_type=None,
-                    logical_operator_pauli_type='X', logical_op_directions=['x', 'y'],
+                    logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
                     detector_indexes=None, detector_args=None):
         # assert reps % 2 == 0
         circ = stim.Circuit()
@@ -154,7 +166,7 @@ class FloquetCode:
                 for direction, logical in logical_operators.items():
                     if (self.bond_in_path(bond, logical['sites_on_logical_path']) and
                             bond.pauli_label[0] == logical_operator_pauli_type):
-                        # self.draw_pauli(logical_pauli)
+                        # self.draw_pauli(logical['logical_pauli'])
                         logical['measurements_to_include'].add(i_meas)
                         logical['logical_pauli'] = (
                             logical['logical_pauli'].compose(self.bond_to_full_pauli(bond)))
@@ -211,17 +223,21 @@ class FloquetCode:
     def bond_in_path(self, bond, sites_on_path):
         return np.all(bond.site1 == sites_on_path, axis=1).any() and np.all(bond.site2 == sites_on_path, axis=1).any()
 
-    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=True):
         if logical_operator_direction == 'x':
             sites_on_logical_path = [[ix, iy, s]
                                      for ix in range(self.num_sites_x)
                                      for iy in [0]
                                      for s in [0, 1]]
         elif logical_operator_direction == 'y':
-            sites_on_logical_path = [[ix, iy, s]
+            sites_on_logical_path = ([[ix, iy, s]
                                      for ix in [0]
                                      for iy in range(self.num_sites_y)
-                                     for s in [0, 1]]
+                                     for s in [1]] +
+                                     [[ix, iy, s]
+                                     for ix in [1]
+                                     for iy in range(self.num_sites_y)
+                                     for s in [0]])
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
             bonds_connected_to_site = [bond for bond in self.bonds if
@@ -270,11 +286,14 @@ class FloquetCode:
         for plaquette in self.plaquettes:
             if plaquette.pauli_label == 'X':
                 continue
+            # if any pair of sites in the plaquette are far apart, skip it
+            if any([np.linalg.norm(site1 - site2) > 2.5 for site1 in plaquette.sites for site2 in plaquette.sites]):
+                continue
             if self.boundary_conditions[0] == 'periodic' and plaquette.coords[0] == self.num_sites_x - 1:
                 continue
             if self.boundary_conditions[1] == 'periodic' and plaquette.coords[1] == self.num_sites_y - 1:
                 continue
-            color = (plaquette.coords[0] - plaquette.coords[1]) % 3
+            color = (plaquette.coords[0]%2 - plaquette.coords[1]) % 3
             color = ['r', 'g', 'b'][color]
             # draw a shaded polygon for the plaquette
             points = list(map(site_to_physical_location, plaquette.sites))
@@ -286,9 +305,9 @@ class FloquetCode:
             site1, site2 = bond.site1.copy(), bond.site2.copy()
             x1, y1 = site_to_physical_location(bond.site1)
             if np.linalg.norm(site1[0] - site2[0]) > 1:
-                site2 = site2 + np.array([self.num_sites_x, 0, 0])
+                site2 = site2 + np.array([self.num_sites_x * round((site1[0] - site2[0])/self.num_sites_x), 0, 0])
             if np.linalg.norm(site1[1] - site2[1]) > 1:
-                site2 = site2 + np.array([0, self.num_sites_y, 0])
+                site2 = site2 + np.array([0, self.num_sites_y * round((site1[1] - site2[1])/self.num_sites_y), 0])
             x2, y2 = site_to_physical_location(site2)
             ax.plot([x1, x2], [y1, y2], 'k')
             x = (x1 + x2) / 2
