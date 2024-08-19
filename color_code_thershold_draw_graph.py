@@ -35,7 +35,7 @@ marker_column = 'logical_operator_direction'  # This can be 'logical_operator_di
 plt.figure()
 
 # # Filter the DataFrame to only include X logical operators and vortex_sign = '1'
-df = df.query('logical_operator_direction == "x"')
+# df = df.query('logical_operator_direction == "x"')
 # # draw pcolor of the logical error rate at the minimal physical error rate as a function of num_vortexes[0] and num_vortexes[1]
 # df = df.query('phys_err_rate == phys_err_rate.min()')
 #

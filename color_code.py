@@ -223,7 +223,7 @@ class FloquetCode:
     def bond_in_path(self, bond, sites_on_path):
         return np.all(bond.site1 == sites_on_path, axis=1).any() and np.all(bond.site2 == sites_on_path, axis=1).any()
 
-    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=True):
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
         if logical_operator_direction == 'x':
             sites_on_logical_path = [[ix, iy, s]
                                      for ix in range(self.num_sites_x)
@@ -286,17 +286,13 @@ class FloquetCode:
         for plaquette in self.plaquettes:
             if plaquette.pauli_label == 'X':
                 continue
-            # if any pair of sites in the plaquette are far apart, skip it
-            if any([np.linalg.norm(site1 - site2) > 2.5 for site1 in plaquette.sites for site2 in plaquette.sites]):
-                continue
-            if self.boundary_conditions[0] == 'periodic' and plaquette.coords[0] == self.num_sites_x - 1:
-                continue
-            if self.boundary_conditions[1] == 'periodic' and plaquette.coords[1] == self.num_sites_y - 1:
+            points = list(map(site_to_physical_location, plaquette.sites))
+            # skip if any pair of points are far apart
+            if np.any([np.linalg.norm(np.array(p1) - np.array(p2)) > 3 for p1 in points for p2 in points]):
                 continue
             color = (plaquette.coords[0]%2 - plaquette.coords[1]) % 3
             color = ['r', 'g', 'b'][color]
             # draw a shaded polygon for the plaquette
-            points = list(map(site_to_physical_location, plaquette.sites))
             polygon = patches.Polygon(points, closed=True, edgecolor=None, facecolor=color, alpha=0.5)
             # Add the polygon to the plot
             ax.add_patch(polygon)

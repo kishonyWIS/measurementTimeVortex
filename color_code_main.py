@@ -1,12 +1,12 @@
 from color_code import *
 
-d_list = [(10,3)]
+d_list = [(4,3)]
 phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
 shots = 100000
 reps_without_noise = 2
-noise_type = 'DEPOLARIZE2'  # 'parity_measurement_with_correlated_measurement_noise'
+noise_type = 'parity_measurement_with_correlated_measurement_noise'  # 'parity_measurement_with_correlated_measurement_noise'
 boundary_conditions = ('periodic', 'periodic')
-logical_op_directions = ['x']
+logical_op_directions = ['x','y']
 
 for num_vortexes in [(0,0)]:  # , (1, 0)
     for logical_operator_pauli_type in ['X']:
