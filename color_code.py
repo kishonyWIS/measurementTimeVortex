@@ -10,6 +10,7 @@ from qiskit.quantum_info import Pauli
 import pandas as pd
 from honeycomb_threshold.src.noise import NoiseModel, parity_measurement_with_correlated_measurement_noise
 from geometry import *
+from noise import get_noise_model
 from simple_stabilizer import StabilizerGroup, PauliMeasurement
 from copy import deepcopy as copy
 
@@ -94,7 +95,7 @@ class FloquetCode:
     def all_sites(self):
         return [[ix, iy, s] for ix in range(self.num_sites_x) for iy in range(self.num_sites_y) for s in [0, 1]]
 
-    def get_circuit(self, reps=12, reps_without_noise=4, noise_rate=0.01, noise_type=None,
+    def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
                     detector_indexes=None, detector_args=None):
         # assert reps % 2 == 0
@@ -114,42 +115,13 @@ class FloquetCode:
         if logical_operator_pauli_type == 'X':
             circ.append_operation("H", list(range(self.num_data_qubits())))
 
-        # stabilizer = StabilizerGroup()
-
         i_meas = 0
+
         for rep in range(reps):
-            for ibond, bond in enumerate(self.bonds):
-
-                # stabilizer.measure_pauli(PauliMeasurement(self.bond_to_full_pauli(bond), [i_meas]))
-                # print(len(stabilizer.paulis))
-
-                qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
-                tp = [[stim.target_x, stim.target_y, stim.target_z]["XYZ".index(p)] for p in bond.pauli_label]
-                if noise_rate is not None and reps_without_noise <= rep < reps - reps_without_noise:
-                    if noise_type == 'parity_measurement_with_correlated_measurement_noise':
-                        circ += parity_measurement_with_correlated_measurement_noise(
-                            t1=tp[0](qubit_pair[0]),
-                            t2=tp[1](qubit_pair[1]),
-                            ancilla=self.num_data_qubits(),
-                            mix_probability=noise_rate)
-                    else:
-                        circ.append_operation(noise_type, qubit_pair, noise_rate)
-                        circ.append_operation("MPP",
-                                              [tp[0](qubit_pair[0]), stim.target_combiner(), tp[1](qubit_pair[1])])
-                else:
-                    circ.append_operation("MPP",
-                                          [tp[0](qubit_pair[0]), stim.target_combiner(), tp[1](qubit_pair[1])])
-                bond.measurement_indexes.append(i_meas)
-
-                # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
-                for direction, logical in logical_operators.items():
-                    if (self.bond_in_path(bond, logical['sites_on_logical_path']) and
-                            bond.pauli_label[0] == logical_operator_pauli_type):
-                        # self.draw_pauli(logical['logical_pauli'])
-                        logical['measurements_to_include'].add(i_meas)
-                        logical['logical_pauli'] = (
-                            logical['logical_pauli'].compose(self.bond_to_full_pauli(bond)))
-                i_meas += 1
+            layer, i_meas = self.get_measurements_layer(i_meas, logical_operator_pauli_type, logical_operators)
+            if noise_model is not None and reps_without_noise <= rep < reps - reps_without_noise:
+                layer = noise_model.noisy_circuit(layer)
+            circ += layer
 
         # add detectors
         if detector_indexes is not None and detector_args is not None:
@@ -200,6 +172,25 @@ class FloquetCode:
                                    for i in range(observable_length)],
                                   logical['index'])
         return circ, detector_indexes, detector_args
+
+    def get_measurements_layer(self, i_meas, logical_operator_pauli_type, logical_operators):
+        circ = stim.Circuit()
+        for ibond, bond in enumerate(self.bonds):
+            qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
+            tp = [[stim.target_x, stim.target_y, stim.target_z]["XYZ".index(p)] for p in bond.pauli_label]
+            circ.append_operation("MPP", [tp[0](qubit_pair[0]), stim.target_combiner(), tp[1](qubit_pair[1])])
+            bond.measurement_indexes.append(i_meas)
+
+            # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
+            for direction, logical in logical_operators.items():
+                if (self.bond_in_path(bond, logical['sites_on_logical_path']) and
+                        bond.pauli_label[0] == logical_operator_pauli_type):
+                    # self.draw_pauli(logical['logical_pauli'])
+                    logical['measurements_to_include'].add(i_meas)
+                    logical['logical_pauli'] = (
+                        logical['logical_pauli'].compose(self.bond_to_full_pauli(bond)))
+            i_meas += 1
+        return circ, i_meas
 
     def bond_in_path(self, bond, sites_on_path):
         return np.all(bond.site1 == sites_on_path, axis=1).any() and np.all(bond.site2 == sites_on_path, axis=1).any()
@@ -346,7 +337,7 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
     if get_reps_by_graph_dist:
         circ, _, _ = code.get_circuit(
             reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
-            noise_rate=0.1, noise_type=noise_type,
+            noise_model = get_noise_model(noise_type, 0.1),
             logical_operator_pauli_type=logical_operator_pauli_type,
             logical_op_directions=logical_op_directions,
             detector_indexes=detector_indexes, detector_args=detector_args)
@@ -361,13 +352,13 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
           f'boundary_conditions={boundary_conditions}, \n'
           f'num_vortexes={num_vortexes}, shots={shots}')
     for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
+        noise_model = get_noise_model(noise_type, phys_err_rate)
         circ, detector_indexes, detector_args = code.get_circuit(
             reps=reps, reps_without_noise=reps_without_noise,
-            noise_rate=phys_err_rate, noise_type=noise_type,
+            noise_model=noise_model,
             logical_operator_pauli_type=logical_operator_pauli_type,
             logical_op_directions=logical_op_directions,
             detector_indexes=detector_indexes, detector_args=detector_args)
-        # circ = NoiseModel.EM3_v2(phys_err_rate).noisy_circuit(circ)
         model = circ.detector_error_model(decompose_errors=True)
         matching = pymatching.Matching.from_detector_error_model(model)
         sampler = circ.compile_detector_sampler()
