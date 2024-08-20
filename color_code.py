@@ -22,10 +22,11 @@ def cyclic_permute(s, n=1):
 
 class FloquetCode:
     def __init__(self, num_sites_x, num_sites_y, num_vortexes=(0, 0), geometry:Callable = SymmetricTorus,
-                 boundary_conditions=('periodic', 'periodic')):
+                 boundary_conditions=('periodic', 'periodic'), detectors=('X','Z')):
         self.num_sites_x = num_sites_x
         self.num_sites_y = num_sites_y
         self.num_vortexes = num_vortexes
+        self.detectors = detectors
         self.boundary_conditions = boundary_conditions
         self.geometry = geometry(num_sites_x, num_sites_y)
         self.bonds = self.get_bonds()
@@ -158,6 +159,8 @@ class FloquetCode:
             detector_indexes = []
             detector_args = []
             for plaq in self.plaquettes:
+                if plaq.pauli_label not in self.detectors:
+                    continue
                 n_bonds = len(plaq.bonds)
                 plaq_measurement_idx = plaq.measurement_indexes()
                 plaq_coords = plaq.coords
@@ -201,7 +204,7 @@ class FloquetCode:
     def bond_in_path(self, bond, sites_on_path):
         return np.all(bond.site1 == sites_on_path, axis=1).any() and np.all(bond.site2 == sites_on_path, axis=1).any()
 
-    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=True):
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
         sites_on_logical_path = self.geometry.get_sites_on_logical_path(logical_operator_direction)
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
@@ -333,12 +336,12 @@ class Plaquette:
 
 def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
                            logical_op_directions, boundary_conditions, num_vortexes, get_reps_by_graph_dist=False,
-                           geometry: Callable[[int, int], Geometry] = SymmetricTorus):
+                           geometry: Callable[[int, int], Geometry] = SymmetricTorus, detectors=('X','Z')):
     rows = []
     detector_indexes = None
     detector_args = None
     code = FloquetCode(dx, dy, boundary_conditions=boundary_conditions,
-                       num_vortexes=num_vortexes, geometry=geometry)
+                       num_vortexes=num_vortexes, geometry=geometry, detectors=detectors)
 
     if get_reps_by_graph_dist:
         circ, _, _ = code.get_circuit(
@@ -391,7 +394,8 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
                 'num_vortexes': num_vortexes,
                 'noise_type': noise_type,
                 'shots': shots,
-                'geometry': geometry.__name__
+                'geometry': geometry.__name__,
+                'detectors': detectors,
             })
     df = pd.DataFrame(rows)
     # append to the csv file if exists, otherwise create a new file
