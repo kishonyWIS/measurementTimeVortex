@@ -1,5 +1,5 @@
 import dataclasses
-from typing import Optional, Dict, Set, Tuple
+from typing import Optional, Dict, Set, Tuple, Callable
 
 import stim
 
@@ -17,7 +17,7 @@ class NoiseModel:
     noisy_gates: Dict[str, float]
     any_clifford_1: Optional[float] = None
     any_clifford_2: Optional[float] = None
-    use_correlated_parity_measurement_errors: bool = False
+    parity_measurement_noise: Callable[[stim.GateTarget, stim.GateTarget, int, float], stim.Circuit] = None
 
     @staticmethod
     def SD6(p: float) -> 'NoiseModel':
@@ -25,7 +25,7 @@ class NoiseModel:
             any_clifford_1=0,
             idle=0,
             measure_reset_idle=0,
-            use_correlated_parity_measurement_errors=False,
+            parity_measurement_noise=parity_measurement_with_uncorrelated_measurement_noise,
             noisy_gates={
                 "MPP": p,
             },
@@ -39,7 +39,20 @@ class NoiseModel:
             any_clifford_2=0,
             idle=0,
             measure_reset_idle=0,
-            use_correlated_parity_measurement_errors=True,
+            parity_measurement_noise=parity_measurement_with_correlated_measurement_noise,
+            noisy_gates={
+                "MPP": p,
+            },
+        )
+
+    @staticmethod
+    def Depolarizing2_before_parity_meas(p: float) -> 'NoiseModel':
+        return NoiseModel(
+            any_clifford_1=0,
+            any_clifford_2=0,
+            idle=0,
+            measure_reset_idle=0,
+            parity_measurement_noise=parity_measurement_with_noise_before,
             noisy_gates={
                 "MPP": p,
             },
@@ -55,20 +68,12 @@ class NoiseModel:
                 assert len(targets) % 3 == 0 and all(t.is_combiner for t in targets[1::3]), repr(op)
                 assert args == [] or args == [0]
 
-                if self.use_correlated_parity_measurement_errors:
-                    for k in range(0, len(targets), 3):
-                        result += parity_measurement_with_correlated_measurement_noise(
-                            t1=targets[k],
-                            t2=targets[k + 2],
-                            ancilla=ancilla,
-                            mix_probability=p)
-                else:
-                    for k in range(0, len(targets), 3):
-                        result += parity_measurement_with_uncorrelated_measurement_noise(
-                            t1=targets[k],
-                            t2=targets[k + 2],
-                            ancilla=ancilla,
-                            p=p)
+                for k in range(0, len(targets), 3):
+                    result += self.parity_measurement_noise(
+                        t1=targets[k],
+                        t2=targets[k + 2],
+                        ancilla=ancilla,
+                        p=p)
             else:
                 raise NotImplementedError(repr(op))
         else:
@@ -102,7 +107,7 @@ def parity_measurement_with_correlated_measurement_noise(
         t1: stim.GateTarget,
         t2: stim.GateTarget,
         ancilla: int,
-        mix_probability: float) -> stim.Circuit:
+        p: float) -> stim.Circuit:
     """Performs a noisy parity measurement.
 
     With probability mix_probability, applies a random element from
@@ -113,7 +118,7 @@ def parity_measurement_with_correlated_measurement_noise(
     samples when the error occurs.
     """
 
-    ind_p = mix_probability_to_independent_component_probability(mix_probability, 5)
+    ind_p = mix_probability_to_independent_component_probability(p, 5)
 
     # Generate all possible combinations of (non-identity) channels.  Assumes triple of targets
     # with last element corresponding to measure qubit.
@@ -191,9 +196,40 @@ def parity_measurement_with_uncorrelated_measurement_noise(
 
     return circuit
 
+def parity_measurement_with_noise_before(
+        *,
+        t1: stim.GateTarget,
+        t2: stim.GateTarget,
+        ancilla: int,
+        p: float) -> stim.Circuit:
+
+    circuit = stim.Circuit()
+    circuit.append_operation('R', [ancilla])
+    circuit.append_operation('DEPOLARIZE2', [t1.value, t2.value], p)
+
+    if t1.is_x_target:
+        circuit.append_operation('XCX', [t1.value, ancilla])
+    if t1.is_y_target:
+        circuit.append_operation('YCX', [t1.value, ancilla])
+    if t1.is_z_target:
+        circuit.append_operation('ZCX', [t1.value, ancilla])
+
+    if t2.is_x_target:
+        circuit.append_operation('XCX', [t2.value, ancilla])
+    if t2.is_y_target:
+        circuit.append_operation('YCX', [t2.value, ancilla])
+    if t2.is_z_target:
+        circuit.append_operation('ZCX', [t2.value, ancilla])
+
+    circuit.append_operation('M', [ancilla])
+
+    return circuit
+
 def get_noise_model(noise_type: str, physical_error_rate: float) -> NoiseModel:
     if noise_type == 'SD6':
         return NoiseModel.SD6(physical_error_rate)
     if noise_type == 'EM3_v2':
         return NoiseModel.EM3_v2(physical_error_rate)
+    if noise_type == 'DEPOLARIZE2':
+        return NoiseModel.Depolarizing2_before_parity_meas(physical_error_rate)
     raise NotImplementedError(f"Unknown noise type: {noise_type}")
