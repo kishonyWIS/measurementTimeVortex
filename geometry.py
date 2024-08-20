@@ -63,6 +63,47 @@ class Geometry:
         else:
             return shifted_sites
 
+# class SymmetricCylinder(Geometry):
+#     #periodic in x, open in y
+#     def site_to_physical_location(self, site):
+#         x = np.sqrt(3) * site[0] + np.sqrt(3) / 2 * site[1] + np.sqrt(3) / 2 * site[2]
+#         y = 1.5 * site[1] + 0.5 * site[2]
+#         return x, y
+#
+#     def site_neighbor_directions(self, site):
+#         if site[1] == self.num_sites_y-1:
+#             return [np.array([0, 0, 1]), np.array([1, 0, 1])]
+#         else:
+#             return [np.array([0, 0, 1]), np.array([1, 0, 1]), np.array([0, 1, 1])]
+#
+#     def plaquette_offsets(self, ix, iy):
+#         return np.array([[0, 0, 1],
+#                          [0, 1, 0],
+#                          [0, 1, 1],
+#                          [1, 1, 0],
+#                          [1, 0, 1],
+#                          [1, 0, 0]])
+#
+#     def get_bond_color(self, direction, site1):
+#         return (site1[0] - site1[1] - direction[0] + direction[1]) % 3
+#
+#     def get_sites_on_logical_path(self, direction: str):
+#         if direction == 'x':
+#             return [[ix, iy, s]
+#                     for ix in range(self.num_sites_x)
+#                     for iy in [0]
+#                     for s in [0, 1]]
+#         elif direction == 'y':
+#             return [[ix, iy, s]
+#                     for ix in [0]
+#                     for iy in range(self.num_sites_y)
+#                     for s in [0, 1]]
+#
+#     def get_plaquette_color(self, coords):
+#         color = (coords[0] - coords[1]) % 3
+#         return ['r', 'g', 'b'][color]
+
+
 class SymmetricTorus(Geometry):
     def site_to_physical_location(self, site):
         x = np.sqrt(3) * site[0] + np.sqrt(3) / 2 * site[1] + np.sqrt(3) / 2 * site[2]

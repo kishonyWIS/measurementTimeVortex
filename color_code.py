@@ -5,7 +5,7 @@ import stim
 import numpy as np
 from matplotlib import pyplot as plt, patches
 import pymatching
-from itertools import chain
+from itertools import chain, product
 from qiskit.quantum_info import Pauli
 import pandas as pd
 from honeycomb_threshold.src.noise import NoiseModel, parity_measurement_with_correlated_measurement_noise
@@ -48,7 +48,7 @@ class FloquetCode:
                         continue
                     for pauli_label in ['XX', 'ZZ']:
                         order = self.get_bond_order(site1, direction, pauli_label)
-                        bond = Bond(site1, site2, pauli_label, order)
+                        bond = Bond(np.stack([site1, site2]), pauli_label, order)
                         bonds.append(bond)
         bonds = sorted(bonds, key=lambda b: b.order)
         return bonds
@@ -176,9 +176,12 @@ class FloquetCode:
     def get_measurements_layer(self, i_meas, logical_operator_pauli_type, logical_operators):
         circ = stim.Circuit()
         for ibond, bond in enumerate(self.bonds):
-            qubit_pair = [self.site_to_index(bond.site1), self.site_to_index(bond.site2)]
+            qubits = [self.site_to_index(site) for site in bond.sites]
             tp = [[stim.target_x, stim.target_y, stim.target_z]["XYZ".index(p)] for p in bond.pauli_label]
-            circ.append_operation("MPP", [tp[0](qubit_pair[0]), stim.target_combiner(), tp[1](qubit_pair[1])])
+            if len(qubits) == 2:
+                circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), tp[1](qubits[1])])
+            else:
+                circ.append_operation("MPP", [tp[0](qubits[0])])
             bond.measurement_indexes.append(i_meas)
 
             # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
@@ -193,14 +196,14 @@ class FloquetCode:
         return circ, i_meas
 
     def bond_in_path(self, bond, sites_on_path):
-        return np.all(bond.site1 == sites_on_path, axis=1).any() and np.all(bond.site2 == sites_on_path, axis=1).any()
+        return np.all([np.all(site == sites_on_path, axis=1).any() for site in bond.sites])
 
     def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
         sites_on_logical_path = self.geometry.get_sites_on_logical_path(logical_operator_direction)
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
             bonds_connected_to_site = [bond for bond in self.bonds if
-                                       np.all(bond.site1 == site) or np.all(bond.site2 == site)]
+                                       np.any([np.all(s == site) for s in bond.sites])]
             append_logical = 0  # 0: I, 1: logical_operator_pauli_type
             for bond in bonds_connected_to_site:
                 if bond.pauli_label[0] != logical_operator_pauli_type:
@@ -233,10 +236,8 @@ class FloquetCode:
 
     def bond_to_full_pauli(self, bond):
         full_pauli = ['I'] * self.num_data_qubits()
-        site1_index = self.site_to_index(bond.site1)
-        site2_index = self.site_to_index(bond.site2)
-        full_pauli[site1_index] = bond.pauli_label[0]
-        full_pauli[site2_index] = bond.pauli_label[1]
+        for site, label in zip(bond.sites, bond.pauli_label):
+            full_pauli[self.site_to_index(site)] = label
         return Pauli(''.join(full_pauli))
 
     def draw_pauli(self, pauli: Pauli):
@@ -256,19 +257,12 @@ class FloquetCode:
             ax.add_patch(polygon)
         for bond in self.bonds:
             # if the two sites are far apart, the bond is an edge bond should be plotted as if site2 is the shifted site
-            site1, site2 = bond.site1.copy(), bond.site2.copy()
-            sites = self.geometry.sites_unwrap_periodic([site1, site2])
-            x1, y1 = self.geometry.site_to_physical_location(sites[0])
-            x2, y2 = self.geometry.site_to_physical_location(sites[1])
-            # x1, y1 = self.geometry.site_to_physical_location(bond.site1)
-            # if np.linalg.norm(site1[0] - site2[0]) > 1:
-            #     site2 = site2 + np.array([self.num_sites_x * round((site1[0] - site2[0])/self.num_sites_x), 0, 0])
-            # if np.linalg.norm(site1[1] - site2[1]) > 1:
-            #     site2 = site2 + np.array([0, self.num_sites_y * round((site1[1] - site2[1])/self.num_sites_y), 0])
-            # x2, y2 = self.geometry.site_to_physical_location(site2)
-            ax.plot([x1, x2], [y1, y2], 'k')
-            x = (x1 + x2) / 2
-            y = (y1 + y2) / 2
+            sites = copy(bond.sites)
+            sites = self.geometry.sites_unwrap_periodic(sites)
+            xs, ys = zip(*[self.geometry.site_to_physical_location(site) for site in sites])
+            ax.plot(xs, ys, 'k')
+            x = np.mean(xs)
+            y = np.mean(ys)
             fontsize = 10
             y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
             ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center',
@@ -287,21 +281,17 @@ class FloquetCode:
 
 
 class Bond:
-    def __init__(self, site1: np.ndarray, site2: np.ndarray, pauli_label: str, order: int):
-        self.site1 = site1
-        self.site2 = site2
+    def __init__(self, sites: np.ndarray, pauli_label: str, order: int):
+        self.sites = sites
         self.pauli_label = pauli_label
         self.order = order
         self.measurement_indexes = []
 
     def __repr__(self):
-        return f'Bond({self.site1}, {self.site2}, {self.pauli_label}, {self.order})'
+        return f'Bond({self.sites}, {self.pauli_label}, {self.order})'
 
     def overlaps(self, other):
-        return ((self.site1 == other.site1).all() or
-                (self.site1 == other.site2).all() or
-                (self.site2 == other.site1).all() or
-                (self.site2 == other.site2).all())
+        return np.any([np.all(self_site == other_site) for self_site, other_site in product(self.sites, other.sites)])
 
 
 class Plaquette:
@@ -314,7 +304,7 @@ class Plaquette:
     def get_bonds(self, all_bonds):
         bonds = []
         for bond in all_bonds:
-            if np.all(bond.site1 == self.sites, axis=1).any() and np.all(bond.site2 == self.sites, axis=1).any():
+            if np.all([np.all(s == self.sites, axis=1).any() for s in bond.sites]):
                 if self.pauli_label is None or np.all([p == self.pauli_label for p in bond.pauli_label]):
                     bonds.append(bond)
         self.bonds = bonds

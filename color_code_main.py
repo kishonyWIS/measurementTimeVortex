@@ -1,7 +1,7 @@
 from color_code import *
 from geometry import *
 
-d_list = [(9,9)]
+d_list = [(3,3)]
 phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
 shots = 100000
 reps_without_noise = 2
@@ -11,7 +11,7 @@ geometry = SymmetricTorus
 logical_op_directions = ['x','y']
 detectors = ('X')
 
-for num_vortexes in [(2,2)]:  # , (1, 0)
+for num_vortexes in [(0,0)]:  # , (1, 0)
     for logical_operator_pauli_type in ['X']:
         for id, d in enumerate(d_list):
             dx = d[0]
