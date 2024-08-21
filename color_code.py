@@ -28,10 +28,9 @@ class FloquetCode:
         self.num_sites_y = num_sites_y
         self.num_vortexes = num_vortexes
         self.detectors = detectors
-        self.boundary_conditions = boundary_conditions
-        self.geometry = geometry(num_sites_x, num_sites_y)
+        self.geometry = geometry(num_sites_x, num_sites_y, boundary_conditions)
         self.bonds = self.get_bonds()
-        self.plaquettes = self.get_plaquettes()
+        self.plaquettes = self.geometry.get_plaquettes()
         for plaquette in self.plaquettes:
             plaquette.get_bonds(self.bonds)
 
@@ -39,54 +38,27 @@ class FloquetCode:
         bonds = []
         for ix in range(self.num_sites_x):
             for iy in range(self.num_sites_y):
-                site1 = np.array([ix, iy, 1])
-                directions = self.geometry.site_neighbor_directions(site1)
-                for direction in directions:
+                site_ref = np.array([ix, iy, 1])
+                directions_labels_colors = self.geometry.site_neighbor_directions_and_labels_and_colors(site_ref)
+                for directions, pauli_label, color in directions_labels_colors:
                     # drop the edge bond if it is not periodic
-                    site2 = self.shift_site(site1, direction)
-                    if site2 is None:
+                    sites = [self.geometry.shift_site(site_ref, d) for d in directions]
+                    if np.any([s is None for s in sites]):
                         continue
-                    for pauli_label in ['XX', 'ZZ']:
-                        order = self.get_bond_order(site1, direction, pauli_label)
-                        bond = Bond(np.stack([site1, site2]), pauli_label, order)
-                        bonds.append(bond)
+                    order = self.get_bond_order(sites, color, pauli_label)
+                    bond = Bond(np.stack(sites), pauli_label, order)
+                    bonds.append(bond)
         bonds = sorted(bonds, key=lambda b: b.order)
         return bonds
-
-    def shift_site(self, site, shift):
-        shifted_site = site + shift
-        if not self.boundary_conditions[0] == 'periodic':
-            if shifted_site[0] < 0 or shifted_site[0] >= self.num_sites_x:
-                return None
-        if not self.boundary_conditions[1] == 'periodic':
-            if shifted_site[1] < 0 or shifted_site[1] >= self.num_sites_y:
-                return None
-        return shifted_site % np.array([self.num_sites_x, self.num_sites_y, 2])
 
     def num_data_qubits(self):
         return self.num_sites_x * self.num_sites_y * 2
 
-    def get_plaquettes(self):
-        plaquettes = []
-        # add hexagonal plaquettes
-        for ix in range(self.num_sites_x):
-            for iy in range(self.num_sites_y):
-                reference_site = np.array([ix, iy, 0])
-                sites = [self.shift_site(reference_site, offset) for offset in
-                         self.geometry.plaquette_offsets(ix, iy)]
-                # drop the plaquette if it is not periodic
-                if np.any([s is None for s in sites]):
-                    continue
-                for pauli_label in ['X', 'Z']:
-                    plaquettes.append(Plaquette(sites, [ix, iy], pauli_label))
-        return plaquettes
-
     def location_dependent_delay(self, site):
         return site[0] / self.num_sites_x * self.num_vortexes[0] + site[1] / self.num_sites_y * self.num_vortexes[1]
 
-    def get_bond_order(self, site1, direction, pauli_label):
-        site_midpoint = site1 + direction / 2
-        color = self.geometry.get_bond_color(direction, site1)
+    def get_bond_order(self, sites, color, pauli_label):
+        site_midpoint = np.mean(sites, axis=0)
         order_without_vortex = (-color / 3 + (pauli_label == 'ZZ') / 2) % 1
         order = order_without_vortex + self.location_dependent_delay(site_midpoint)
         order = order % 1
@@ -133,19 +105,26 @@ class FloquetCode:
             for plaq in self.plaquettes:
                 if plaq.pauli_label not in self.detectors:
                     continue
-                n_bonds = len(plaq.bonds)
-                plaq_measurement_idx = plaq.measurement_indexes()
+                plaq_measurement_idx_and_sizes = plaq.measurement_indexes_and_sizes()
                 plaq_coords = plaq.coords
                 rep = 0
-                for i in range(len(plaq_measurement_idx) - n_bonds + 1):
-                    record_targets = [stim.target_rec(plaq_measurement_idx[j] - i_meas) for j in range(i, i + n_bonds)]
+                for i in range(len(plaq_measurement_idx_and_sizes)):
+                    cur_meas_indexes = []
+                    num_sites_in_measurements = 0
+                    for j, (meas_idx, meas_size) in enumerate(plaq_measurement_idx_and_sizes[i:]):
+                        cur_meas_indexes.append(meas_idx - i_meas)
+                        num_sites_in_measurements += meas_size
+                        if num_sites_in_measurements >= 2 * len(plaq.sites):
+                            break
+                    if num_sites_in_measurements > 2 * len(plaq.sites):
+                        continue
                     new_circ = circ.copy()
-                    new_circ.append_operation("DETECTOR", record_targets,
+                    new_circ.append_operation("DETECTOR", list(map(stim.target_rec, cur_meas_indexes)),
                                               [plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label == 'X'])
                     try:
                         new_circ.detector_error_model(decompose_errors=True)
                         circ = new_circ
-                        detector_indexes.append([plaq_measurement_idx[j] - i_meas for j in range(i, i + n_bonds)])
+                        detector_indexes.append(cur_meas_indexes)
                         detector_args.append([plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label == 'X'])
                         rep += 1
                     except:
@@ -181,7 +160,11 @@ class FloquetCode:
             if len(qubits) == 2:
                 circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), tp[1](qubits[1])])
             else:
-                circ.append_operation("MPP", [tp[0](qubits[0])])
+                # circ.append_operation("M"+bond.pauli_label[0], [qubits[0]])
+                # reset an ancilla at index self.num_data_qubits()+1 then do a parity measurement
+                ancilla = self.num_data_qubits()+1
+                circ.append_operation("R", [ancilla])
+                circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), stim.target_z(ancilla)])
             bond.measurement_indexes.append(i_meas)
 
             # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
@@ -278,41 +261,6 @@ class FloquetCode:
                 ax.text(x, y, p, fontsize=20, ha='center', va='center')
         ax.set_aspect('equal')
         plt.show()
-
-
-class Bond:
-    def __init__(self, sites: np.ndarray, pauli_label: str, order: int):
-        self.sites = sites
-        self.pauli_label = pauli_label
-        self.order = order
-        self.measurement_indexes = []
-
-    def __repr__(self):
-        return f'Bond({self.sites}, {self.pauli_label}, {self.order})'
-
-    def overlaps(self, other):
-        return np.any([np.all(self_site == other_site) for self_site, other_site in product(self.sites, other.sites)])
-
-
-class Plaquette:
-    def __init__(self, sites: list[np.ndarray], coords: list, pauli_label: Optional[str] = None):
-        self.sites = sites
-        self.bonds = []
-        self.coords = coords
-        self.pauli_label = pauli_label
-
-    def get_bonds(self, all_bonds):
-        bonds = []
-        for bond in all_bonds:
-            if np.all([np.all(s == self.sites, axis=1).any() for s in bond.sites]):
-                if self.pauli_label is None or np.all([p == self.pauli_label for p in bond.pauli_label]):
-                    bonds.append(bond)
-        self.bonds = bonds
-
-    def measurement_indexes(self):
-        all_indexes = [bond.measurement_indexes for bond in self.bonds]
-        all_indexes = list(chain(*all_indexes))
-        return sorted(all_indexes)
 
 
 def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
