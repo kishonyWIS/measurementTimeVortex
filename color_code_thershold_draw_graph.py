@@ -49,7 +49,7 @@ linestyle_column = 'num_vortexes'  # This can be 'vortex_location' or another co
 marker_column = 'logical_operator_direction'  # This can be 'logical_operator_direction' or another column
 
 # # Filter the DataFrame to only include X logical operators and vortex_sign = '1'
-df = df.query('geometry == "SymmetricTorus"')
+df = df.query('geometry == "SymmetricCylinder"')
 
 
 for logical_operator_direction in ['x', 'y', 'both']:
@@ -95,6 +95,7 @@ for logical_operator_direction in ['x', 'y', 'both']:
     edit_graph('Physical Error Rate', 'Logical Error Rate',
                scale=1.5)
 
+plt.show()
     # Show the plot
 # plt.savefig('figures/threshold.pdf')
 
@@ -105,7 +106,8 @@ df['num_vortexes_x'] = df['num_vortexes'].apply(lambda x: x[0])
 df['num_vortexes_y'] = df['num_vortexes'].apply(lambda x: x[1])
 df = df.drop(columns='num_vortexes')
 
-df_temp = df.query('dx == 9 and dy == 9')
+# take the maximum system size
+df_temp = df.query(f'dx == {max(df.dx)} and dy == {max(df.dy)}')
 
 # pivot the DataFrame to have the vortex configurations as the index
 for logical_operator_direction in ['x', 'y', 'both']:
@@ -120,4 +122,7 @@ for logical_operator_direction in ['x', 'y', 'both']:
     plt.colorbar(c, label='logical error rate'+' '+logical_operator_direction)
     plt.xlabel('Number of Y Vortexes')
     plt.ylabel('Number of X Vortexes')
+    # set the ticks to the values of the vortexes
+    ax.set_xticks(np.unique(x))
+    ax.set_yticks(np.unique(y))
 plt.show()

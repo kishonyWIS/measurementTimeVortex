@@ -30,6 +30,8 @@ class Plaquette:
     def get_bonds(self, all_bonds):
         bonds = []
         for bond in all_bonds:
+            if len(bond.pauli_label) == 1 and len(self.sites) == 6:
+                continue
             if np.all([np.all(s == self.sites, axis=1).any() for s in bond.sites]):
                 if self.pauli_label is None or np.all([p == self.pauli_label for p in bond.pauli_label]):
                     bonds.append(bond)
@@ -85,10 +87,10 @@ class Geometry:
         shifted_sites = []
         for site in sites:
             new_site = copy(site)
-            if np.linalg.norm(site[0] - reference_site[0]) > 1:
+            if np.linalg.norm(site[0] - reference_site[0]) > 1 and self.boundary_conditions[0] == 'periodic':
                 new_site = new_site + np.array(
                     [self.num_sites_x * round((reference_site[0] - site[0]) / self.num_sites_x), 0, 0])
-            if np.linalg.norm(site[1] - reference_site[1]) > 1:
+            if np.linalg.norm(site[1] - reference_site[1]) > 1 and self.boundary_conditions[1] == 'periodic':
                 new_site = new_site + np.array(
                     [0, self.num_sites_y * round((reference_site[1] - site[1]) / self.num_sites_y), 0])
             shifted_sites.append(new_site)
@@ -194,7 +196,7 @@ class SymmetricCylinder(Geometry):
         if direction == 'x':
             return [[ix, iy, s]
                     for ix in range(self.num_sites_x)
-                    for iy in [0]
+                    for iy in [1]
                     for s in [0, 1]]
         elif direction == 'y':
             return [[ix, iy, s]

@@ -58,7 +58,7 @@ class FloquetCode:
         return site[0] / self.num_sites_x * self.num_vortexes[0] + site[1] / self.num_sites_y * self.num_vortexes[1]
 
     def get_bond_order(self, sites, color, pauli_label):
-        site_midpoint = np.mean(sites, axis=0)
+        site_midpoint = np.mean(self.geometry.sites_unwrap_periodic(sites), axis=0)
         order_without_vortex = (-color / 3 + (pauli_label == 'ZZ') / 2) % 1
         order = order_without_vortex + self.location_dependent_delay(site_midpoint)
         order = order % 1
@@ -227,7 +227,7 @@ class FloquetCode:
         fig, ax = plt.subplots(figsize=(15, 10))
 
         for plaquette in self.plaquettes:
-            if plaquette.pauli_label == 'X':
+            if plaquette.pauli_label == 'Z':
                 continue
             sites, was_shifted = self.geometry.sites_unwrap_periodic(plaquette.sites, return_was_shifted=True)
             if was_shifted:
