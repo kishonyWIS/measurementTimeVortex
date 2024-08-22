@@ -8,7 +8,7 @@ import pymatching
 from itertools import chain, product
 from qiskit.quantum_info import Pauli
 import pandas as pd
-from honeycomb_threshold.src.noise import NoiseModel, parity_measurement_with_correlated_measurement_noise
+# from honeycomb_threshold.src.noise import NoiseModel, parity_measurement_with_correlated_measurement_noise
 from geometry import *
 from noise import get_noise_model
 from simple_stabilizer import StabilizerGroup, PauliMeasurement
@@ -181,7 +181,7 @@ class FloquetCode:
     def bond_in_path(self, bond, sites_on_path):
         return np.all([np.all(site == sites_on_path, axis=1).any() for site in bond.sites])
 
-    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=True):
         sites_on_logical_path = self.geometry.get_sites_on_logical_path(logical_operator_direction)
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
