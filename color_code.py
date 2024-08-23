@@ -72,6 +72,9 @@ class FloquetCode:
                     detector_indexes=None, detector_args=None):
         # assert reps % 2 == 0
         circ = stim.Circuit()
+        for site in self.all_sites():
+            x, y = self.geometry.site_to_physical_location(site)
+            circ.append_operation("QUBIT_COORDS", [self.site_to_index(site)], [x, y])
         for bond in self.bonds:
             bond.measurement_indexes = []
 
@@ -106,7 +109,7 @@ class FloquetCode:
                 if plaq.pauli_label not in self.detectors:
                     continue
                 plaq_measurement_idx_and_sizes = plaq.measurement_indexes_and_sizes()
-                plaq_coords = plaq.coords
+                plaq_x_y = plaq.center_x_y
                 rep = 0
                 for i in range(len(plaq_measurement_idx_and_sizes)):
                     cur_meas_indexes = []
@@ -120,12 +123,12 @@ class FloquetCode:
                         continue
                     new_circ = circ.copy()
                     new_circ.append_operation("DETECTOR", list(map(stim.target_rec, cur_meas_indexes)),
-                                              [plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label == 'X'])
+                                              [plaq_x_y[0], plaq_x_y[1], rep, plaq.pauli_label == 'X'])
                     try:
                         new_circ.detector_error_model(decompose_errors=True)
                         circ = new_circ
                         detector_indexes.append(cur_meas_indexes)
-                        detector_args.append([plaq_coords[0], plaq_coords[1], rep, plaq.pauli_label == 'X'])
+                        detector_args.append([plaq_x_y[0], plaq_x_y[1], rep, plaq.pauli_label == 'X'])
                         rep += 1
                     except:
                         pass
