@@ -69,7 +69,7 @@ class FloquetCode:
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
-                    detector_indexes=None, detector_args=None):
+                    detector_indexes=None, detector_args=None, draw = False):
         # assert reps % 2 == 0
         circ = stim.Circuit()
         for bond in self.bonds:
@@ -78,7 +78,7 @@ class FloquetCode:
         logical_operators = dict()
         for i_logical, logical_operator_direction in enumerate(logical_op_directions):
             logical_pauli, sites_on_logical_path = self.get_logical_operator(logical_operator_direction,
-                                                                             logical_operator_pauli_type)
+                                                                             logical_operator_pauli_type, draw=draw)
             logical_operators[logical_operator_direction] = {'logical_pauli': logical_pauli,
                                                              'sites_on_logical_path': sites_on_logical_path,
                                                              'measurements_to_include': set(),
@@ -265,7 +265,7 @@ class FloquetCode:
 
 def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
                            logical_op_directions, boundary_conditions, num_vortexes, get_reps_by_graph_dist=False,
-                           geometry: Callable[[int, int], Geometry] = SymmetricTorus, detectors=('X','Z')):
+                           geometry: Callable[[int, int], Geometry] = SymmetricTorus, detectors=('X','Z'), **kwargs):
     rows = []
     detector_indexes = None
     detector_args = None
@@ -278,7 +278,7 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
             noise_model = get_noise_model(noise_type, 0.1),
             logical_operator_pauli_type=logical_operator_pauli_type,
             logical_op_directions=logical_op_directions,
-            detector_indexes=detector_indexes, detector_args=detector_args)
+            detector_indexes=detector_indexes, detector_args=detector_args, **kwargs)
         graph_dist = len(circ.shortest_graphlike_error())
         reps = 3 * graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
         print('graph_dist: ', graph_dist)
@@ -296,7 +296,7 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
             noise_model=noise_model,
             logical_operator_pauli_type=logical_operator_pauli_type,
             logical_op_directions=logical_op_directions,
-            detector_indexes=detector_indexes, detector_args=detector_args)
+            detector_indexes=detector_indexes, detector_args=detector_args, **kwargs)
         model = circ.detector_error_model(decompose_errors=True)
         matching = pymatching.Matching.from_detector_error_model(model)
         sampler = circ.compile_detector_sampler()

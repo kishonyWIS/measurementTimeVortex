@@ -11,7 +11,7 @@ geometry = SymmetricCylinder
 logical_op_directions = ('x')
 detectors = ('Z',)
 
-for num_vortexes in [(1,0)]: # product([0,1,2],[0,1,2]):  # , (1, 0)
+for num_vortexes in [(1,0)]: #product([0,1,2],[0,1,2]):  # , (1, 0)
     for logical_operator_pauli_type in ['Z']:
         for id, d in enumerate(d_list):
             dx = d[0]
