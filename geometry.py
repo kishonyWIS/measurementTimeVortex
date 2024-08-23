@@ -21,10 +21,11 @@ class Bond:
 
 
 class Plaquette:
-    def __init__(self, sites: list[np.ndarray], coords: list, pauli_label: Optional[str] = None):
+    def __init__(self, sites: list[np.ndarray], coords: list, center_x_y, pauli_label: Optional[str] = None):
         self.sites = sites
         self.bonds = []
         self.coords = coords
+        self.center_x_y = center_x_y
         self.pauli_label = pauli_label
 
     def get_bonds(self, all_bonds):
@@ -118,11 +119,12 @@ class Geometry:
                 reference_site = np.array([ix, iy, 0])
                 sites = [self.shift_site(reference_site, offset) for offset in
                          self.plaquette_offsets(ix, iy)]
+                center_x_y = self.site_to_physical_location(reference_site + np.mean(np.array(self.plaquette_offsets(ix, iy)), axis=0))
                 # drop the plaquette if it is not periodic
                 if np.any([s is None for s in sites]):
                     continue
                 for pauli_label in ['X', 'Z']:
-                    plaquettes.append(Plaquette(sites, [ix, iy], pauli_label))
+                    plaquettes.append(Plaquette(sites, [ix, iy], center_x_y, pauli_label))
         return plaquettes
 
 class SymmetricCylinder(Geometry):
@@ -183,13 +185,15 @@ class SymmetricCylinder(Geometry):
                 reference_site = np.array([ix, iy, 0])
                 sites = [self.shift_site(reference_site, offset) for offset in
                          self.plaquette_offsets(ix, iy)]
+                center_x_y = self.site_to_physical_location(
+                    reference_site + np.mean(np.array(self.plaquette_offsets(ix, iy)), axis=0))
                 # drop the plaquette if it is not periodic
                 if np.any([s is None for s in sites]):
                     continue
                 for pauli_label in ['X', 'Z']:
                     if iy in [-1, self.num_sites_y-1] and pauli_label == 'Z':
                         continue
-                    plaquettes.append(Plaquette(sites, [ix, iy], pauli_label))
+                    plaquettes.append(Plaquette(sites, [ix, iy], center_x_y, pauli_label))
         return plaquettes
 
     def get_sites_on_logical_path(self, direction: str):

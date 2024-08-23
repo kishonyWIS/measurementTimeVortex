@@ -1,4 +1,5 @@
 import dataclasses
+from functools import partial
 from typing import Optional, Dict, Set, Tuple, Callable
 
 import stim
@@ -46,26 +47,13 @@ class NoiseModel:
         )
 
     @staticmethod
-    def Depolarizing2_before_parity_meas(p: float) -> 'NoiseModel':
+    def Noise_before_parity_meas(p: float, noise_type:str = 'DEPOLARIZE2') -> 'NoiseModel':
         return NoiseModel(
             any_clifford_1=0,
             any_clifford_2=0,
             idle=0,
             measure_reset_idle=0,
-            parity_measurement_noise=parity_measurement_with_noise_before,
-            noisy_gates={
-                "MPP": p,
-            },
-        )
-
-    @staticmethod
-    def Depolarizing1_before_parity_meas(p: float) -> 'NoiseModel':
-        return NoiseModel(
-            any_clifford_1=0,
-            any_clifford_2=0,
-            idle=0,
-            measure_reset_idle=0,
-            parity_measurement_noise=parity_measurement_with_noise_before1,
+            parity_measurement_noise=partial(parity_measurement_with_noise_before, noise_type=noise_type),
             noisy_gates={
                 "MPP": p,
             },
@@ -214,11 +202,12 @@ def parity_measurement_with_noise_before(
         t1: stim.GateTarget,
         t2: stim.GateTarget,
         ancilla: int,
-        p: float) -> stim.Circuit:
+        p: float,
+        noise_type: str = 'DEPOLARIZE2') -> stim.Circuit:
 
     circuit = stim.Circuit()
     circuit.append_operation('R', [ancilla])
-    circuit.append_operation('DEPOLARIZE2', [t1.value, t2.value], p)
+    circuit.append_operation(noise_type, [t1.value, t2.value], p)
 
     if t1.is_x_target:
         circuit.append_operation('XCX', [t1.value, ancilla])
@@ -238,34 +227,6 @@ def parity_measurement_with_noise_before(
 
     return circuit
 
-def parity_measurement_with_noise_before1(
-        *,
-        t1: stim.GateTarget,
-        t2: stim.GateTarget,
-        ancilla: int,
-        p: float) -> stim.Circuit:
-
-    circuit = stim.Circuit()
-    circuit.append_operation('R', [ancilla])
-    circuit.append_operation('DEPOLARIZE1', [t1.value, t2.value], p)
-
-    if t1.is_x_target:
-        circuit.append_operation('XCX', [t1.value, ancilla])
-    if t1.is_y_target:
-        circuit.append_operation('YCX', [t1.value, ancilla])
-    if t1.is_z_target:
-        circuit.append_operation('ZCX', [t1.value, ancilla])
-
-    if t2.is_x_target:
-        circuit.append_operation('XCX', [t2.value, ancilla])
-    if t2.is_y_target:
-        circuit.append_operation('YCX', [t2.value, ancilla])
-    if t2.is_z_target:
-        circuit.append_operation('ZCX', [t2.value, ancilla])
-
-    circuit.append_operation('M', [ancilla])
-
-    return circuit
 
 def get_noise_model(noise_type: str, physical_error_rate: float) -> NoiseModel:
     if noise_type == 'SD6':
@@ -273,7 +234,7 @@ def get_noise_model(noise_type: str, physical_error_rate: float) -> NoiseModel:
     if noise_type == 'EM3_v2':
         return NoiseModel.EM3_v2(physical_error_rate)
     if noise_type == 'DEPOLARIZE2':
-        return NoiseModel.Depolarizing2_before_parity_meas(physical_error_rate)
+        return NoiseModel.Noise_before_parity_meas(physical_error_rate, noise_type='DEPOLARIZE2')
     if noise_type == 'DEPOLARIZE1':
-        return NoiseModel.Depolarizing1_before_parity_meas(physical_error_rate)
+        return NoiseModel.Noise_before_parity_meas(physical_error_rate, noise_type='DEPOLARIZE1')
     raise NotImplementedError(f"Unknown noise type: {noise_type}")

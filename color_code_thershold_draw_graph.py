@@ -14,8 +14,9 @@ def parse_tuple(value):
     return ast.literal_eval(value)
 
 # Read the CSV, applying the converter to a specific column
-df = pd.read_csv('data/threshold.csv', converters={'num_vortexes': parse_tuple})
+df = pd.read_csv('data/threshold_torus.csv', converters={'num_vortexes': parse_tuple})
 df = df.drop(columns=['Unnamed: 0'])
+df = df.query('geometry == "SymmetricTorus"')
 
 # Display the first few rows of the DataFrame for verification
 print(df.head())
@@ -23,7 +24,7 @@ print(df.head())
 
 
 
-
+df = df.drop(columns=['detectors', 'logical_operator_pauli_type', 'reps_with_noise'])
 
 df_x = df[df['logical_operator_direction'] == 'x'].drop(columns='logical_operator_direction').rename(columns={'log_err_rate': 'log_err_rate_x'})
 df_y = df[df['logical_operator_direction'] == 'y'].drop(columns='logical_operator_direction').rename(columns={'log_err_rate': 'log_err_rate_y'})
@@ -49,13 +50,13 @@ linestyle_column = 'num_vortexes'  # This can be 'vortex_location' or another co
 marker_column = 'logical_operator_direction'  # This can be 'logical_operator_direction' or another column
 
 # # Filter the DataFrame to only include X logical operators and vortex_sign = '1'
-df = df.query('geometry == "SymmetricCylinder"')
+
 
 
 for logical_operator_direction in ['x', 'y', 'both']:
 
     # Create a new plot
-    plt.figure()
+    plt.figure(figsize=(15,10))
 
     # Group by the chosen columns and plot each group
     for (color_val, num_vortexes), group in df.groupby([color_column, linestyle_column]):
