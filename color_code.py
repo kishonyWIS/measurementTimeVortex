@@ -1,6 +1,6 @@
 import os
 from typing import Optional, Callable
-
+from entanglement import num_logical_qubits
 import stim
 import numpy as np
 from matplotlib import pyplot as plt, patches
@@ -138,6 +138,9 @@ class FloquetCode:
             for i_to_include in logical['measurements_to_include']:
                 circ.append_operation("OBSERVABLE_INCLUDE", stim.target_rec(i_to_include - i_meas),
                                       logical['index'])
+
+        # check how many logical qubits are in the code
+        print('num logical qubits: ', num_logical_qubits(circ, list(range(self.num_data_qubits()))))
 
         # Finish circuit with data measurements according to logical operator
         for direction, logical in logical_operators.items():
