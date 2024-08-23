@@ -1,18 +1,18 @@
 from color_code import *
 from geometry import *
 
-d_list = [(3,3),(6,6),(9,9)]
+d_list = [(6,6)]
 phys_err_rate_list = [0.005, 0.01, 0.015, 0.02, 0.025, 0.03]
 shots = 100000
 reps_without_noise = 2
 noise_type = 'DEPOLARIZE2'  # 'parity_measurement_with_correlated_measurement_noise', 'DEPOLARIZE2', 'DEPOLARIZE1', 'Z_ERROR', 'SD6', 'EM3_v2'
-boundary_conditions = ('periodic', 'open')
-geometry = SymmetricCylinder
-logical_op_directions = ('x')
-detectors = ('Z',)
+boundary_conditions = ('periodic', 'periodic')
+geometry = SymmetricTorus
+logical_op_directions = ('y')
+detectors = ('X',)
 
-for num_vortexes in product([0,1,2],[0,1,2]):  # , (1, 0)
-    for logical_operator_pauli_type in ['Z']:
+for num_vortexes in [(0,0)]:  # , (1, 0)
+    for logical_operator_pauli_type in ['X']:
         for id, d in enumerate(d_list):
             dx = d[0]
             dy = d[1]
