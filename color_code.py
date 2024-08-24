@@ -69,7 +69,7 @@ class FloquetCode:
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
-                    detector_indexes=None, detector_args=None, draw = False):
+                    detector_indexes=None, detector_args=None, draw=False):
         # assert reps % 2 == 0
         circ = stim.Circuit()
         for site in self.all_sites():
@@ -122,13 +122,14 @@ class FloquetCode:
                     if num_sites_in_measurements > 2 * len(plaq.sites):
                         continue
                     new_circ = circ.copy()
+                    current_detector_args = [plaq_x_y[0], plaq_x_y[1], np.mean(cur_meas_indexes), plaq.pauli_label == 'X']
                     new_circ.append_operation("DETECTOR", list(map(stim.target_rec, cur_meas_indexes)),
-                                              [plaq_x_y[0], plaq_x_y[1], rep, plaq.pauli_label == 'X'])
+                                              current_detector_args)
                     try:
                         new_circ.detector_error_model(decompose_errors=True)
                         circ = new_circ
                         detector_indexes.append(cur_meas_indexes)
-                        detector_args.append([plaq_x_y[0], plaq_x_y[1], rep, plaq.pauli_label == 'X'])
+                        detector_args.append(current_detector_args)
                         rep += 1
                     except:
                         pass
@@ -187,7 +188,7 @@ class FloquetCode:
     def bond_in_path(self, bond, sites_on_path):
         return np.all([np.all(site == sites_on_path, axis=1).any() for site in bond.sites])
 
-    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=True):
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
         sites_on_logical_path = self.geometry.get_sites_on_logical_path(logical_operator_direction)
         logical_operator_string = []
         for i_along_path, site in enumerate(sites_on_logical_path):
@@ -256,15 +257,16 @@ class FloquetCode:
             y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
             ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center',
                     va='center')
-        for i, pp in enumerate(pauli[::-1]):
-            p = pp.to_label()
-            site = self.index_to_site(i)
-            x, y = self.geometry.site_to_physical_location(site)
-            if p == 'I':
-                ax.plot(x, y, 'ko')
-            else:
-                ax.plot(x, y, 'co', markersize=20)
-                ax.text(x, y, p, fontsize=20, ha='center', va='center')
+        if pauli is not None:
+            for i, pp in enumerate(pauli[::-1]):
+                p = pp.to_label()
+                site = self.index_to_site(i)
+                x, y = self.geometry.site_to_physical_location(site)
+                if p == 'I':
+                    ax.plot(x, y, 'ko')
+                else:
+                    ax.plot(x, y, 'co', markersize=20)
+                    ax.text(x, y, p, fontsize=20, ha='center', va='center')
         ax.set_aspect('equal')
         plt.show()
 
