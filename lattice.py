@@ -2,7 +2,7 @@ import networkx as nx
 import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Callable
 from qiskit.quantum_info import Pauli
 
 
@@ -27,7 +27,7 @@ class Lattice:
     def __init__(self, size,
                  lattice_vectors:list[tuple], sublab_offsets:list[np.ndarray[2]],
                  edges_shifts: list[tuple[tuple[int,int,int],tuple[int,int,int]]],
-                 plaquette_shifts: list[tuple[int,int,int]]):
+                 plaquette_shifts: list[tuple[tuple[int,int,int], ...]]):
         self.lattice_vectors = list(map(np.array, lattice_vectors))
         self.sublab_offsets = sublab_offsets
         self.edges_shifts = edges_shifts
@@ -43,7 +43,7 @@ class Lattice:
 
     def shift_site(self, site, shift, return_was_wrapped=False):
         shifted_site = np.array(site) + np.array(shift)
-        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], 2]))
+        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublab_offsets)]))
         was_wrapped = not np.allclose(shifted_site_mod_size, shifted_site)
         return shifted_site_mod_size, was_wrapped if return_was_wrapped else shifted_site_mod_size
 
@@ -69,19 +69,24 @@ class Lattice:
                                 )
 
     def create_plaquettes_and_colors(self):
-        mean_pos_of_shifts = np.mean([np.array(self.coords_to_pos(shift)) for shift in self.plaquette_shifts], axis=0)
-        for row, col in np.ndindex(self.size):
-            reference_site = (row, col, 0)
-            sites_and_wrapped = [self.shift_site(reference_site, shift, return_was_wrapped=True) for shift in self.plaquette_shifts]
-            sites = list(map(lambda x: x[0], sites_and_wrapped))
-            self.plaquettes[(row, col)] = Plaquette(sites=sites,
-                                                    edges=[(sites[i], sites[(i + 1) % len(sites)]) for i in range(len(sites))],
-                                                    color=(row - col) % 3,
-                                                    wrapped=any(wrapped for site, wrapped in sites_and_wrapped),
-                                                    pos=tuple(np.array(self.G.nodes[reference_site]["pos"]) +
-                                                              mean_pos_of_shifts))
-            for edge in self.plaquettes[(row, col)].edges:
-                self.G.edges[edge]["color"] = (self.G.edges[edge]["color"] - self.plaquettes[(row, col)].color) % 3
+        for i_plaq, shifts in enumerate(self.plaquette_shifts):
+            mean_pos_of_shifts = np.mean([np.array(self.coords_to_pos(shift)) for shift in shifts], axis=0)
+            for row, col in np.ndindex(self.size):
+                reference_site = (row, col, 0)
+                sites_and_wrapped = [self.shift_site(reference_site, shift, return_was_wrapped=True) for shift in shifts]
+                sites = list(map(lambda x: x[0], sites_and_wrapped))
+                coords = (row, col, i_plaq)
+                self.plaquettes[coords] = Plaquette(sites=sites,
+                                                        edges=[(sites[i], sites[(i + 1) % len(sites)]) for i in range(len(sites))],
+                                                        color=self.plaq_coords_to_color(coords),
+                                                        wrapped=any(wrapped for site, wrapped in sites_and_wrapped),
+                                                        pos=tuple(np.array(self.G.nodes[reference_site]["pos"]) +
+                                                                  mean_pos_of_shifts))
+                for edge in self.plaquettes[coords].edges:
+                    self.G.edges[edge]["color"] = (self.G.edges[edge]["color"] - self.plaquettes[coords].color) % 3
+
+    def plaq_coords_to_color(self, coords):
+        return (coords[0] - coords[1]) % 3
 
     def assign_indices(self):
         # Assign unique indices to nodes not on boundary
@@ -112,7 +117,7 @@ class Lattice:
     def get_index_from_site(self, site):
         return self.site_to_index.get(site, None)
 
-    def get_sites_on_logical_path(self, direction='x'):
+    def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
             return [(ix, 2, s) for ix in range(self.size[0]) for s in range(2)]
         elif direction == 'y':
@@ -142,7 +147,7 @@ class HexagonalLatticeSheared(Lattice):
         lattice_vectors = [(np.sqrt(3), 0), (np.sqrt(3) / 2, 1.5)]
         sublab_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
         edges_shifts = [((0,0,1), (0,0,0)), ((0,0,1), (1,0,0)), ((0,0,1),(0,1,0))]
-        plaquette_shifts = [(0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0)]
+        plaquette_shifts = [((0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0))]
         super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
 
 class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
@@ -150,9 +155,26 @@ class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
         super().__init__(size)
         self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in (0, 1)], 'X')
 
+class HexagonalLatticeGidney(Lattice):
+    def __init__(self, size):
+        lattice_vectors = [(2,0), (0,2)]
+        sublab_offsets = [(0,0), (0,1), (1,0), (1,1)]
+        edges_shifts = [((0,0,0), (0,0,1)), ((0,0,2), (0,0,3)), ((0,0,1),(0,0,3)),
+                        ((0,0,1), (0,1,0)), ((0,0,3), (0,1,2)), ((0,0,2), (1,0,0))]
+        plaquette_shifts = [((0,0,1), (0,0,3), (0,1,2), (0,1,3), (0,1,1), (0,1,0)),
+                            ((0,0,2), (0,0,3), (0,1,2), (1,1,0), (1,0,1), (1,0,0))]
+        super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
 
-# class HexagonalLatticeGidney(Lattice):
+    def get_sites_on_logical_path(self, direction:str='x'):
+        if direction == 'x':
+            return [(ix, 1, s) for ix in range(self.size[0]) for s in [0,1,3,2]]
+        elif direction == 'y':
+            return [(1, iy, s) for iy in range(self.size[1]) for s in range(2)]
+        else:
+            raise ValueError(f"Invalid direction {direction}")
 
+    def plaq_coords_to_color(self, coords):
+        return (-coords[2] - coords[1]) % 3
 
 
 if __name__ == '__main__':
