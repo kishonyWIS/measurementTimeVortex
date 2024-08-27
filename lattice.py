@@ -27,11 +27,11 @@ class Plaquette:
 
 class Lattice:
     def __init__(self, size,
-                 lattice_vectors:list[tuple], sublab_offsets:list[np.ndarray[2]],
+                 lattice_vectors:list[tuple], sublat_offsets:list[np.ndarray[2]],
                  edges_shifts: list[tuple[tuple[int,int,int],tuple[int,int,int]]],
                  plaquette_shifts: list[tuple[tuple[int,int,int], ...]]):
         self.lattice_vectors = list(map(np.array, lattice_vectors))
-        self.sublab_offsets = sublab_offsets
+        self.sublat_offsets = sublat_offsets
         self.edges_shifts = edges_shifts
         self.plaquette_shifts = plaquette_shifts
         self.plaquettes = {}
@@ -45,17 +45,17 @@ class Lattice:
 
     def shift_site(self, site, shift, return_was_wrapped=False):
         shifted_site = np.array(site) + np.array(shift)
-        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublab_offsets)]))
+        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublat_offsets)]))
         was_wrapped = not np.allclose(shifted_site_mod_size, shifted_site)
         return shifted_site_mod_size, was_wrapped if return_was_wrapped else shifted_site_mod_size
 
     def coords_to_pos(self, coords):
         return tuple(np.sum([coord * vec for coord,vec in zip(coords[:-1],self.lattice_vectors)], axis=0) +
-                     np.array(self.sublab_offsets[coords[2]]))
+                     np.array(self.sublat_offsets[coords[2]]))
 
     def create_graph(self):
         for row, col in np.ndindex(self.size):
-            for sublat in range(len(self.sublab_offsets)):
+            for sublat in range(len(self.sublat_offsets)):
                 site1 = (row, col, sublat)
                 self.G.add_node(site1, pos=tuple(self.coords_to_pos(site1)), boundary=False)
 
@@ -121,9 +121,9 @@ class Lattice:
 
     def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
-            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(len(self.sublab_offsets))]
+            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(len(self.sublat_offsets))]
         elif direction == 'y':
-            return [(2, iy, s) for iy in range(self.size[1]) for s in range(len(self.sublab_offsets))]
+            return [(2, iy, s) for iy in range(self.size[1]) for s in range(len(self.sublat_offsets))]
         else:
             raise ValueError(f"Invalid direction {direction}")
 
@@ -147,10 +147,10 @@ class Lattice:
 class HexagonalLatticeSheared(Lattice):
     def __init__(self, size):
         lattice_vectors = [(np.sqrt(3), 0), (np.sqrt(3) / 2, 1.5)]
-        sublab_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
+        sublat_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
         edges_shifts = [((0,0,1), (0,0,0)), ((0,0,1), (1,0,0)), ((0,0,1),(0,1,0))]
         plaquette_shifts = [((0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0))]
-        super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
+        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
 
 class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
     def __init__(self, size):
@@ -160,12 +160,12 @@ class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
 class HexagonalLatticeGidney(Lattice):
     def __init__(self, size):
         lattice_vectors = [(2,0), (0,2)]
-        sublab_offsets = [(0,0), (0,1), (1,0), (1,1)]
+        sublat_offsets = [(0,0), (0,1), (1,0), (1,1)]
         edges_shifts = [((0,0,0), (0,0,1)), ((0,0,2), (0,0,3)), ((0,0,1),(0,0,3)),
                         ((0,0,1), (0,1,0)), ((0,0,3), (0,1,2)), ((0,0,2), (1,0,0))]
         plaquette_shifts = [((0,0,1), (0,0,3), (0,1,2), (0,1,3), (0,1,1), (0,1,0)),
                             ((0,0,2), (0,0,3), (0,1,2), (1,1,0), (1,0,1), (1,0,0))]
-        super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
+        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
 
     def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
@@ -182,7 +182,7 @@ class HexagonalLatticeGidney(Lattice):
 class HexagonalLatticeGidneyOnCylinder(HexagonalLatticeGidney):
     def __init__(self, size):
         super().__init__(size)
-        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublab_offsets))], 'X')
+        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
 
 
 if __name__ == '__main__':
