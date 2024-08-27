@@ -1,18 +1,13 @@
 import os
-from typing import Optional, Callable
+from copy import copy
+
 from entanglement import num_logical_qubits
 import stim
-import numpy as np
-from matplotlib import pyplot as plt, patches
 import pymatching
-from itertools import chain, product
-from qiskit.quantum_info import Pauli
+from itertools import product
 import pandas as pd
-# from honeycomb_threshold.src.noise import NoiseModel, parity_measurement_with_correlated_measurement_noise
-from geometry import *
+from lattice import *
 from noise import get_noise_model
-from simple_stabilizer import StabilizerGroup, PauliMeasurement
-from copy import deepcopy as copy
 
 
 def cyclic_permute(s, n=1):
@@ -20,61 +15,114 @@ def cyclic_permute(s, n=1):
     n = n % len(s)  # Ensure n is within the bounds of the string length
     return s[n:] + s[:n]
 
+class Bond:
+    def __init__(self, sites: list, pauli_label: str, order: int):
+        assert len(sites) == len(pauli_label)
+        self.sites = sites
+        self.pauli_label = pauli_label
+        self.order = order
+        self.measurement_indexes = []
+
+    def __repr__(self):
+        return f'Bond({self.sites}, {self.pauli_label}, {self.order})'
+
+    def overlaps(self, other):
+        return np.any([np.all(self_site == other_site) for self_site, other_site in product(self.sites, other.sites)])
+
+    def pauli_length(self):
+        return len(self.pauli_label.replace('I', ''))
+
+
+class PlaquetteStabilizer:
+    def __init__(self, sites: list[tuple], bonds:list[Bond], coords: tuple, pos: tuple, pauli_label: str = None):
+        self.sites = sites
+        self.bonds = bonds
+        self.coords = coords
+        self.pos = pos
+        self.pauli_label = pauli_label
+
+    def measurement_indexes_and_sizes(self):
+        all_indexes = [(index, bond.pauli_length()) for bond in self.bonds for index in bond.measurement_indexes]
+        return sorted(all_indexes, key=lambda x: x[0])
+
 
 class FloquetCode:
-    def __init__(self, num_sites_x, num_sites_y, num_vortexes=(0, 0), geometry:Callable = SymmetricTorus,
-                 boundary_conditions=('periodic', 'periodic'), detectors=('X','Z')):
-        self.num_sites_x = num_sites_x
-        self.num_sites_y = num_sites_y
+    def __init__(self, lat: HexagonalLattice, num_vortexes=(0, 0), detectors=('X', 'Z')):
         self.num_vortexes = num_vortexes
         self.detectors = detectors
-        self.geometry = geometry(num_sites_x, num_sites_y, boundary_conditions)
+        self.lat = lat
         self.bonds = self.get_bonds()
-        self.plaquettes = self.geometry.get_plaquettes()
-        for plaquette in self.plaquettes:
-            plaquette.get_bonds(self.bonds)
+        self.plaquettes = self.get_plaquettes()
 
     def get_bonds(self):
         bonds = []
-        for ix in range(self.num_sites_x):
-            for iy in range(self.num_sites_y):
-                site_ref = np.array([ix, iy, 1])
-                directions_labels_colors = self.geometry.site_neighbor_directions_and_labels_and_colors(site_ref)
-                for directions, pauli_label, color in directions_labels_colors:
-                    # drop the edge bond if it is not periodic
-                    sites = [self.geometry.shift_site(site_ref, d) for d in directions]
-                    if np.any([s is None for s in sites]):
-                        continue
-                    order = self.get_bond_order(sites, color, pauli_label)
-                    bond = Bond(np.stack(sites), pauli_label, order)
-                    bonds.append(bond)
+        for edge, edge_data in self.lat.G.edges.items():
+            edge_data['bonds'] = []
+            # sort the sites so that the first is not a boundary site
+            sites = [edge[0], edge[1]]
+            sites = sorted(sites, key=lambda s: not self.lat.G.nodes[s]['boundary'])
+            boundary_type = self.lat.G.nodes[sites[1]]['boundary']
+            if not boundary_type:
+                pauli_labels = ['XX', 'ZZ']
+            elif boundary_type == 'X':
+                pauli_labels = ['XI']
+            elif boundary_type == 'Z':
+                pauli_labels = ['ZI']
+            else:
+                raise ValueError(f'Unknown boundary type {boundary_type}')
+            for pauli_label in pauli_labels:
+                order = self.get_bond_order(edge_data['coords'], edge_data['color'], pauli_label)
+                bond = Bond(sites, pauli_label, order)
+                bonds.append(bond)
+                edge_data['bonds'].append(bond)
         bonds = sorted(bonds, key=lambda b: b.order)
         return bonds
 
+    def get_plaquettes(self):
+        plaquettes = []
+        for coords, data in self.lat.plaquettes.items():
+            sites = data.sites
+            edges = data.edges
+            pos = data.pos
+            for pauli_label, opposite_pauli_label in zip(['X', 'Z'], ['Z', 'X']):
+                # if there is a boundary site of the opposite pauli label, continue
+                if any([self.lat.G.nodes[s]['boundary'] == opposite_pauli_label for s in sites]):
+                    continue
+                bonds = []
+                for edge in edges:
+                    for bond in self.lat.G.edges[edge]['bonds']:
+                        if pauli_label in bond.pauli_label:
+                            bonds.append(bond)
+                plaquettes.append(PlaquetteStabilizer(sites=sites, bonds=bonds, coords=coords, pos=pos, pauli_label= pauli_label))
+        return plaquettes
+
+    @property
     def num_data_qubits(self):
-        return self.num_sites_x * self.num_sites_y * 2
+        return len(self.lat.site_to_index)
 
-    def location_dependent_delay(self, site):
-        return site[0] / self.num_sites_x * self.num_vortexes[0] + site[1] / self.num_sites_y * self.num_vortexes[1]
+    @property
+    def measurement_ancilla(self):
+        return self.num_data_qubits
 
-    def get_bond_order(self, sites, color, pauli_label):
-        site_midpoint = np.mean(self.geometry.sites_unwrap_periodic(sites), axis=0)
-        order_without_vortex = (-color / 3 + (pauli_label == 'ZZ') / 2) % 1
-        order = order_without_vortex + self.location_dependent_delay(site_midpoint)
+    @property
+    def boundary_ancilla(self):
+        return self.num_data_qubits + 1
+
+    def location_dependent_delay(self, coords):
+        return coords[0] / self.lat.size[0] * self.num_vortexes[0] + coords[1] / self.lat.size[1] * self.num_vortexes[1]
+
+    def get_bond_order(self, coords, color, pauli_label):
+        order_without_vortex = (-color / 3 + ('Z' in pauli_label) / 2) % 1
+        order = order_without_vortex + self.location_dependent_delay(coords)
         order = order % 1
         return order
 
-    def all_sites(self):
-        return [[ix, iy, s] for ix in range(self.num_sites_x) for iy in range(self.num_sites_y) for s in [0, 1]]
-
     def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
-                    detector_indexes=None, detector_args=None, draw=False):
-        # assert reps % 2 == 0
+                    detector_indexes=None, detector_args=None, draw=True):
         circ = stim.Circuit()
-        for site in self.all_sites():
-            x, y = self.geometry.site_to_physical_location(site)
-            circ.append_operation("QUBIT_COORDS", [self.site_to_index(site)], [x, y])
+        for site, data in self.lat.G.nodes.items():
+            circ.append_operation("QUBIT_COORDS", [self.lat.get_index_from_site(site)], data['pos'])
         for bond in self.bonds:
             bond.measurement_indexes = []
 
@@ -88,7 +136,7 @@ class FloquetCode:
                                                              'index': i_logical}
 
         if logical_operator_pauli_type == 'X':
-            circ.append_operation("H", list(range(self.num_data_qubits())))
+            circ.append_operation("H", list(lattice.site_to_index.values()))
 
         i_meas = 0
 
@@ -109,7 +157,7 @@ class FloquetCode:
                 if plaq.pauli_label not in self.detectors:
                     continue
                 plaq_measurement_idx_and_sizes = plaq.measurement_indexes_and_sizes()
-                plaq_x_y = plaq.center_x_y
+                plaq_pos = plaq.pos
                 rep = 0
                 for i in range(len(plaq_measurement_idx_and_sizes)):
                     cur_meas_indexes = []
@@ -117,12 +165,12 @@ class FloquetCode:
                     for j, (meas_idx, meas_size) in enumerate(plaq_measurement_idx_and_sizes[i:]):
                         cur_meas_indexes.append(meas_idx - i_meas)
                         num_sites_in_measurements += meas_size
-                        if num_sites_in_measurements >= 2 * len(plaq.sites):
+                        if num_sites_in_measurements >= sum([bond.pauli_length() for bond in plaq.bonds]):
                             break
-                    if num_sites_in_measurements > 2 * len(plaq.sites):
+                    if num_sites_in_measurements > sum([bond.pauli_length() for bond in plaq.bonds]):
                         continue
                     new_circ = circ.copy()
-                    current_detector_args = [plaq_x_y[0], plaq_x_y[1], np.mean(cur_meas_indexes), plaq.pauli_label == 'X']
+                    current_detector_args = [plaq_pos[0], plaq_pos[1], np.mean(cur_meas_indexes), plaq.pauli_label == 'X']
                     new_circ.append_operation("DETECTOR", list(map(stim.target_rec, cur_meas_indexes)),
                                               current_detector_args)
                     try:
@@ -141,37 +189,32 @@ class FloquetCode:
                                       logical['index'])
 
         # check how many logical qubits are in the code
-        print('num logical qubits: ', num_logical_qubits(circ, list(range(self.num_data_qubits()))))
+        print('num logical qubits: ', num_logical_qubits(circ, list(range(self.num_data_qubits))))
 
         # Finish circuit with data measurements according to logical operator
         for direction, logical in logical_operators.items():
             logical_pauli = logical['logical_pauli']
-            x_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'X']
-            y_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'Y']
-            z_finalized = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == 'Z']
-            circ.append_operation("MX", x_finalized)
-            circ.append_operation("MY", y_finalized)
-            circ.append_operation("MZ", z_finalized)
-            observable_length = len(x_finalized) + len(y_finalized) + len(z_finalized)
-            circ.append_operation("OBSERVABLE_INCLUDE",
-                                  [stim.target_rec(i - observable_length)
-                                   for i in range(observable_length)],
-                                  logical['index'])
+            for basis in ['X', 'Y', 'Z']:
+                qubits_in_basis = [i for i, p in enumerate(logical_pauli[::-1]) if p.to_label() == basis]
+                circ.append_operation("M"+basis, qubits_in_basis)
+                circ.append_operation("OBSERVABLE_INCLUDE",
+                                      [stim.target_rec(i - len(qubits_in_basis))
+                                       for i in range(len(qubits_in_basis))],
+                                      logical['index'])
         return circ, detector_indexes, detector_args
 
     def get_measurements_layer(self, i_meas, logical_operator_pauli_type, logical_operators):
         circ = stim.Circuit()
-        for ibond, bond in enumerate(self.bonds):
-            qubits = [self.site_to_index(site) for site in bond.sites]
-            tp = [[stim.target_x, stim.target_y, stim.target_z]["XYZ".index(p)] for p in bond.pauli_label]
+        for bond in self.bonds:
+            qubits = [self.lat.site_to_index.get(site, self.boundary_ancilla) for site in bond.sites]
+            tp = [[stim.target_x, stim.target_y, stim.target_z, stim.target_z]["XYZI".index(p)] for p in bond.pauli_label]
             if len(qubits) == 2:
                 circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), tp[1](qubits[1])])
             else:
                 # circ.append_operation("M"+bond.pauli_label[0], [qubits[0]])
                 # reset an ancilla at index self.num_data_qubits()+1 then do a parity measurement
-                ancilla = self.num_data_qubits()+1
-                circ.append_operation("R", [ancilla])
-                circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), stim.target_z(ancilla)])
+                circ.append_operation("R", [self.boundary_ancilla])
+                circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), stim.target_z(self.boundary_ancilla)])
             bond.measurement_indexes.append(i_meas)
 
             # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
@@ -186,70 +229,53 @@ class FloquetCode:
         return circ, i_meas
 
     def bond_in_path(self, bond, sites_on_path):
-        return np.all([np.all(site == sites_on_path, axis=1).any() for site in bond.sites])
+        return all([site in sites_on_path for site in bond.sites])
 
     def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
-        sites_on_logical_path = self.geometry.get_sites_on_logical_path(logical_operator_direction)
+        sites_on_logical_path = self.lat.get_sites_on_logical_path(logical_operator_direction)
         logical_operator_string = []
-        for i_along_path, site in enumerate(sites_on_logical_path):
-            bonds_connected_to_site = [bond for bond in self.bonds if
-                                       np.any([np.all(s == site) for s in bond.sites])]
+        for site in sites_on_logical_path:
+            bonds_connected_to_site = sorted(self.get_bonds_with_site(site), key=lambda b: b.order)
             append_logical = 0  # 0: I, 1: logical_operator_pauli_type
             for bond in bonds_connected_to_site:
-                if bond.pauli_label[0] != logical_operator_pauli_type:
-                    break
                 if self.bond_in_path(bond, sites_on_logical_path):
                     append_logical += 1
-            # check if the bond is fully contained in the logical path
-            if self.bond_in_path(bond, sites_on_logical_path):
-                append_logical += 1
+                if bond.pauli_label[0] != logical_operator_pauli_type:
+                    break
             logical_operator_string.append(logical_operator_pauli_type if append_logical % 2 else 'I')
         logical_operator_string = ''.join(logical_operator_string)
-        # Initialize data qubits along logical observable column into correct basis for observable to be deterministic.
-        full_logical_operator_string = []
-        for site in self.all_sites():
-            if site in sites_on_logical_path:
-                full_logical_operator_string.append(logical_operator_string[sites_on_logical_path.index(site)])
-            else:
-                full_logical_operator_string.append('I')
-        full_logical_operator_string = ''.join(full_logical_operator_string)
-        logical_pauli = Pauli(full_logical_operator_string)
+        logical_pauli = self.pauli_string_on_sites_to_Pauli(logical_operator_string, sites_on_logical_path)
         if draw:
             self.draw_pauli(logical_pauli)
         return logical_pauli, sites_on_logical_path
 
-    def site_to_index(self, site):
-        return np.ravel_multi_index(site, (self.num_sites_x, self.num_sites_y, 2))
+    def get_bonds_with_site(self, site):
+        bonds = []
+        for edge in self.lat.G.edges(site):
+            edge_data = self.lat.G.edges[edge]
+            bonds.extend(edge_data['bonds'])
+        return bonds
 
-    def index_to_site(self, index):
-        return np.unravel_index(index, (self.num_sites_x, self.num_sites_y, 2))
+    def pauli_string_on_sites_to_Pauli(self, pauli_string, sites):
+        full_logical_operator_string = ['I'] * self.num_data_qubits
+        for site, index in self.lat.site_to_index.items():
+            if site in sites:
+                full_logical_operator_string[index] = pauli_string[sites.index(site)]
+        full_logical_operator_string = ''.join(full_logical_operator_string)
+        logical_pauli = Pauli(full_logical_operator_string)
+        return logical_pauli
 
     def bond_to_full_pauli(self, bond):
-        full_pauli = ['I'] * self.num_data_qubits()
-        for site, label in zip(bond.sites, bond.pauli_label):
-            full_pauli[self.site_to_index(site)] = label
-        return Pauli(''.join(full_pauli))
+        return self.pauli_string_on_sites_to_Pauli(bond.pauli_label, bond.sites)
 
     def draw_pauli(self, pauli: Pauli):
-        fig, ax = plt.subplots(figsize=(15, 10))
-
-        for plaquette in self.plaquettes:
-            if plaquette.pauli_label == 'Z':
-                continue
-            sites, was_shifted = self.geometry.sites_unwrap_periodic(plaquette.sites, return_was_shifted=True)
-            if was_shifted:
-                continue
-            points = list(map(self.geometry.site_to_physical_location, sites))
-            color = self.geometry.get_plaquette_color(plaquette.coords)
-            # draw a shaded polygon for the plaquette
-            polygon = patches.Polygon(points, closed=True, edgecolor=None, facecolor=color, alpha=0.5)
-            # Add the polygon to the plot
-            ax.add_patch(polygon)
+        self.lat.draw()
+        ax = plt.gca()
         for bond in self.bonds:
             # if the two sites are far apart, the bond is an edge bond should be plotted as if site2 is the shifted site
             sites = copy(bond.sites)
-            sites = self.geometry.sites_unwrap_periodic(sites)
-            xs, ys = zip(*[self.geometry.site_to_physical_location(site) for site in sites])
+            # sites = self.geometry.sites_unwrap_periodic(sites)
+            xs, ys = zip(*[self.lat.G.nodes[site]['pos'] for site in sites])
             ax.plot(xs, ys, 'k')
             x = np.mean(xs)
             y = np.mean(ys)
@@ -260,8 +286,8 @@ class FloquetCode:
         if pauli is not None:
             for i, pp in enumerate(pauli[::-1]):
                 p = pp.to_label()
-                site = self.index_to_site(i)
-                x, y = self.geometry.site_to_physical_location(site)
+                site = self.lat.index_to_site[i]
+                x, y = self.lat.G.nodes[site]['pos']
                 if p == 'I':
                     ax.plot(x, y, 'ko')
                 else:
@@ -271,31 +297,28 @@ class FloquetCode:
         plt.show()
 
 
-def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
-                           logical_op_directions, boundary_conditions, num_vortexes, get_reps_by_graph_dist=False,
-                           geometry: Callable[[int, int], Geometry] = SymmetricTorus, detectors=('X','Z'), **kwargs):
+def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
+                           logical_op_directions, num_vortexes, lat: HexagonalLattice, get_reps_by_graph_dist=False,
+                           detectors=('X','Z'), draw=False, **kwargs):
     rows = []
     detector_indexes = None
     detector_args = None
-    code = FloquetCode(dx, dy, boundary_conditions=boundary_conditions,
-                       num_vortexes=num_vortexes, geometry=geometry, detectors=detectors)
+    code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
 
     if get_reps_by_graph_dist:
-        circ, _, _ = code.get_circuit(
-            reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
+        circ, _, _ = code.get_circuit(reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
             noise_model = get_noise_model(noise_type, 0.1),
             logical_operator_pauli_type=logical_operator_pauli_type,
             logical_op_directions=logical_op_directions,
-            detector_indexes=detector_indexes, detector_args=detector_args, **kwargs)
+            detector_indexes=detector_indexes, detector_args=detector_args, draw=draw, **kwargs)
         graph_dist = len(circ.shortest_graphlike_error())
         reps = 3 * graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
         print('graph_dist: ', graph_dist)
     else:
-        reps = 3 * min(dx, dy) + 2 * reps_without_noise  # 3 cycles - init, idle, meas
+        reps = 3 * min(lat.size) + 2 * reps_without_noise  # 3 cycles - init, idle, meas
 
-    print(f'Simulating: dx={dx}, dy={dy}, reps={reps}, reps_without_noise={reps_without_noise}, \n'
+    print(f'Simulating: dx={lat.size[0]}, dy={lat.size[1]}, reps={reps}, reps_without_noise={reps_without_noise}, \n'
           f'noise_type={noise_type}, logical_operator_pauli_type={logical_operator_pauli_type}, \n'
-          f'boundary_conditions={boundary_conditions}, \n'
           f'num_vortexes={num_vortexes}, shots={shots}')
     for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
         noise_model = get_noise_model(noise_type, phys_err_rate)
@@ -304,38 +327,41 @@ def simulate_vs_noise_rate(dx, dy, phys_err_rate_list, shots, reps_without_noise
             noise_model=noise_model,
             logical_operator_pauli_type=logical_operator_pauli_type,
             logical_op_directions=logical_op_directions,
-            detector_indexes=detector_indexes, detector_args=detector_args, **kwargs)
-        model = circ.detector_error_model(decompose_errors=True)
-        matching = pymatching.Matching.from_detector_error_model(model)
-        sampler = circ.compile_detector_sampler()
-        syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
+            detector_indexes=detector_indexes, detector_args=detector_args, draw=False, **kwargs)
 
-        predicted_observables = matching.decode_batch(syndrome)
-        num_errors = np.sum(predicted_observables != actual_observables, axis=0)
-
-        log_err_rate = num_errors / shots
-        print("logical error_rate", log_err_rate)
+        log_err_rate = circ_to_logical_error_rate(circ, shots)
         # print(circ)
 
         for i_direction, direction in enumerate(logical_op_directions):
             rows.append({
-                'dx': dx,
-                'dy': dy,
+                'dx': lat.size[0],
+                'dy': lat.size[1],
                 'reps_with_noise': reps - 2 * reps_without_noise,
                 'reps_without_noise': reps_without_noise,
                 'phys_err_rate': phys_err_rate,
                 'log_err_rate': log_err_rate[i_direction],
                 'logical_operator_pauli_type': logical_operator_pauli_type,
                 'logical_operator_direction': direction,
-                'boundary_conditions': boundary_conditions,
                 'num_vortexes': num_vortexes,
                 'noise_type': noise_type,
                 'shots': shots,
-                'geometry': geometry.__name__,
+                'geometry': type(lat).__name__,
                 'detectors': detectors,
             })
     df = pd.DataFrame(rows)
     # append to the csv file if exists, otherwise create a new file
     df.to_csv('data/threshold.csv', mode='a', header=not os.path.exists('data/threshold.csv'))
+
+
+def circ_to_logical_error_rate(circ, shots):
+    model = circ.detector_error_model(decompose_errors=True)
+    matching = pymatching.Matching.from_detector_error_model(model)
+    sampler = circ.compile_detector_sampler()
+    syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
+    predicted_observables = matching.decode_batch(syndrome)
+    num_errors = np.sum(predicted_observables != actual_observables, axis=0)
+    log_err_rate = num_errors / shots
+    print("logical error_rate", log_err_rate)
+    return log_err_rate
 
 
