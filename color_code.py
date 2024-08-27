@@ -1,6 +1,8 @@
 import os
 from copy import copy
 
+import numpy as np
+
 from entanglement import num_logical_qubits
 import stim
 import pymatching
@@ -71,7 +73,7 @@ class FloquetCode:
             else:
                 raise ValueError(f'Unknown boundary type {boundary_type}')
             for pauli_label in pauli_labels:
-                order = self.get_bond_order(edge_data['coords'], edge_data['color'], pauli_label)
+                order = self.get_bond_order(edge_data, pauli_label)
                 bond = Bond(sites, pauli_label, order)
                 bonds.append(bond)
                 edge_data['bonds'].append(bond)
@@ -108,12 +110,20 @@ class FloquetCode:
     def boundary_ancilla(self):
         return self.num_data_qubits + 1
 
-    def location_dependent_delay(self, coords):
-        return coords[0] / self.lat.size[0] * self.num_vortexes[0] + coords[1] / self.lat.size[1] * self.num_vortexes[1]
+    def location_dependent_delay(self, edge_data):
+        if 'Gidney' in type(self.lat).__name__:
+            pos = edge_data['pos']
+            return (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
+                    pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
+        elif 'Sheared' in type(self.lat).__name__:
+            coords = edge_data['coords']
+            return (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
+                    coords[1] / self.lat.size[1] * self.num_vortexes[1])
 
-    def get_bond_order(self, coords, color, pauli_label):
+    def get_bond_order(self, edge_data, pauli_label):
+        color = edge_data['color']
         order_without_vortex = (-color / 3 + ('Z' in pauli_label) / 2) % 1
-        order = order_without_vortex + self.location_dependent_delay(coords)
+        order = order_without_vortex + self.location_dependent_delay(edge_data)
         order = order % 1
         return order
 

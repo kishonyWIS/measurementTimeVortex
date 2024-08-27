@@ -20,7 +20,7 @@ draw = False
 # for i, dx in enumerate(dx_list):
 #     for j, dy in enumerate(dy_list):
 
-dx = 9#6
+dx = 6
 dy = 9
 vx_list = [-2,-1,0,1,2]
 vy_list = [-2,-1,0,1,2]
@@ -31,7 +31,7 @@ for i, vx in enumerate(vx_list):
         num_vortexes = (vx, vy)
 
 
-        lat = HexagonalLatticeSheared((dx, dy))
+        lat = HexagonalLatticeGidney((dx, dy))
 
         try:
             code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
