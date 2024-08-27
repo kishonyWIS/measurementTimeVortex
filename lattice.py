@@ -119,9 +119,9 @@ class Lattice:
 
     def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
-            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(2)]
+            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(len(self.sublab_offsets))]
         elif direction == 'y':
-            return [(2, iy, s) for iy in range(self.size[1]) for s in range(2)]
+            return [(2, iy, s) for iy in range(self.size[1]) for s in range(len(self.sublab_offsets))]
         else:
             raise ValueError(f"Invalid direction {direction}")
 
@@ -169,12 +169,18 @@ class HexagonalLatticeGidney(Lattice):
         if direction == 'x':
             return [(ix, 1, s) for ix in range(self.size[0]) for s in [0,1,3,2]]
         elif direction == 'y':
-            return [(1, iy, s) for iy in range(self.size[1]) for s in range(2)]
+            return [(1, iy, s) for iy in range(self.size[1]) for s in [0,1]]
         else:
             raise ValueError(f"Invalid direction {direction}")
 
     def plaq_coords_to_color(self, coords):
         return (-coords[2] - coords[1]) % 3
+
+
+class HexagonalLatticeGidneyOnCylinder(HexagonalLatticeGidney):
+    def __init__(self, size):
+        super().__init__(size)
+        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublab_offsets))], 'X')
 
 
 if __name__ == '__main__':
