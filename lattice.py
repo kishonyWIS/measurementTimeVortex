@@ -23,8 +23,15 @@ class Plaquette:
         return int_to_color(self.color)
 
 
-class HexagonalLattice:
-    def __init__(self, size):
+class Lattice:
+    def __init__(self, size,
+                 lattice_vectors:list[tuple], sublab_offsets:list[np.ndarray[2]],
+                 edges_shifts: list[tuple[tuple[int,int,int],tuple[int,int,int]]],
+                 plaquette_shifts: list[tuple[int,int,int]]):
+        self.lattice_vectors = list(map(np.array, lattice_vectors))
+        self.sublab_offsets = sublab_offsets
+        self.edges_shifts = edges_shifts
+        self.plaquette_shifts = plaquette_shifts
         self.plaquettes = {}
         self.size = size
         self.G = nx.Graph()
@@ -41,38 +48,38 @@ class HexagonalLattice:
         return shifted_site_mod_size, was_wrapped if return_was_wrapped else shifted_site_mod_size
 
     def coords_to_pos(self, coords):
-        a1 = np.array([np.sqrt(3), 0])
-        a2 = np.array([np.sqrt(3) / 2, 1.5])
-        sublat_offset = np.array([np.sqrt(3) / 2, 1 / 2])
-        return tuple(coords[0] * a1 + coords[1] * a2 + coords[2] * sublat_offset)
+        return tuple(np.sum([coord * vec for coord,vec in zip(coords[:-1],self.lattice_vectors)], axis=0) +
+                     np.array(self.sublab_offsets[coords[2]]))
 
     def create_graph(self):
         for row, col in np.ndindex(self.size):
-            coord_1 = self.coords_to_pos((row, col, 0))
-            coord_2 = self.coords_to_pos((row, col, 1))
+            for sublat in range(len(self.sublab_offsets)):
+                site1 = (row, col, sublat)
+                self.G.add_node(site1, pos=tuple(self.coords_to_pos(site1)), boundary=False)
 
-            self.G.add_node((row, col, 0), pos=tuple(coord_1), boundary=False)
-            self.G.add_node((row, col, 1), pos=tuple(coord_2), boundary=False)
-
-            site1 = (row, col, 1)
-            for shift in [(0, 0, -1), (1, 0, -1), (0, 1, -1)]:
-                site2, was_wrapped = self.shift_site(site1, shift, return_was_wrapped=True)
+        for row, col in np.ndindex(self.size):
+            reference_site = (row, col, 0)
+            for shifts in self.edges_shifts:
+                site1, was_wrapped = self.shift_site(reference_site, shifts[0], return_was_wrapped=True)
+                site2, was_wrapped = self.shift_site(reference_site, shifts[1], return_was_wrapped=True)
+                mean_pos_of_shifts = np.mean([np.array(self.coords_to_pos(shift)) for shift in shifts], axis=0)
                 self.G.add_edge(site1, site2, wrapped=was_wrapped, color=0,
-                                coords=tuple(np.array(site1) + np.array(shift)/2),
-                                pos=tuple(np.array(self.G.nodes[site1]["pos"]) + np.array(self.coords_to_pos(shift))/2))
+                                coords=tuple(np.array(reference_site) + np.mean(shifts, axis=0)),
+                                pos=tuple(np.array(self.G.nodes[reference_site]["pos"]) + mean_pos_of_shifts)
+                                )
 
     def create_plaquettes_and_colors(self):
+        mean_pos_of_shifts = np.mean([np.array(self.coords_to_pos(shift)) for shift in self.plaquette_shifts], axis=0)
         for row, col in np.ndindex(self.size):
-            site1 = (row, col, 1)
-            plaquette_shifts = [(0, 0, 0), (1, 0, -1), (1, 0, 0), (1, 1, -1), (0, 1, 0), (0, 1, -1)]
-            sites_and_wrapped = [self.shift_site(site1, shift, return_was_wrapped=True) for shift in plaquette_shifts]
+            reference_site = (row, col, 0)
+            sites_and_wrapped = [self.shift_site(reference_site, shift, return_was_wrapped=True) for shift in self.plaquette_shifts]
             sites = list(map(lambda x: x[0], sites_and_wrapped))
             self.plaquettes[(row, col)] = Plaquette(sites=sites,
                                                     edges=[(sites[i], sites[(i + 1) % len(sites)]) for i in range(len(sites))],
                                                     color=(row - col) % 3,
                                                     wrapped=any(wrapped for site, wrapped in sites_and_wrapped),
-                                                    pos=tuple(np.array(self.G.nodes[site1]["pos"]) +
-                                                              np.array(self.coords_to_pos(np.mean(plaquette_shifts, axis=0)))))
+                                                    pos=tuple(np.array(self.G.nodes[reference_site]["pos"]) +
+                                                              mean_pos_of_shifts))
             for edge in self.plaquettes[(row, col)].edges:
                 self.G.edges[edge]["color"] = (self.G.edges[edge]["color"] - self.plaquettes[(row, col)].color) % 3
 
@@ -130,9 +137,27 @@ class HexagonalLattice:
         ax.set_aspect('equal')
 
 
+class HexagonalLatticeSheared(Lattice):
+    def __init__(self, size):
+        lattice_vectors = [(np.sqrt(3), 0), (np.sqrt(3) / 2, 1.5)]
+        sublab_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
+        edges_shifts = [((0,0,1), (0,0,0)), ((0,0,1), (1,0,0)), ((0,0,1),(0,1,0))]
+        plaquette_shifts = [(0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0)]
+        super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
+
+class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
+    def __init__(self, size):
+        super().__init__(size)
+        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in (0, 1)], 'X')
+
+
+# class HexagonalLatticeGidney(Lattice):
+
+
+
 if __name__ == '__main__':
     # Add a hexagonal lattice with skewed coordinates, periodic boundary conditions, and plaquettes
-    lattice = HexagonalLattice((6, 6))
+    lattice = Lattice((6, 6))
     lattice.set_boundary([(ix, iy, s) for ix in range(lattice.size[0]) for iy in [0,lattice.size[1]-1] for s in range(2)], 'X')
 
     # Draw the graph to visualize the skewed coordinates and plaquette

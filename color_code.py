@@ -47,7 +47,7 @@ class PlaquetteStabilizer:
 
 
 class FloquetCode:
-    def __init__(self, lat: HexagonalLattice, num_vortexes=(0, 0), detectors=('X', 'Z')):
+    def __init__(self, lat: Lattice, num_vortexes=(0, 0), detectors=('X', 'Z')):
         self.num_vortexes = num_vortexes
         self.detectors = detectors
         self.lat = lat
@@ -298,7 +298,7 @@ class FloquetCode:
 
 
 def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
-                           logical_op_directions, num_vortexes, lat: HexagonalLattice, get_reps_by_graph_dist=False,
+                           logical_op_directions, num_vortexes, lat: Lattice, get_reps_by_graph_dist=False,
                            detectors=('X','Z'), draw=False, **kwargs):
     rows = []
     detector_indexes = None

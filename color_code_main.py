@@ -12,8 +12,7 @@ logical_operator_pauli_type = 'X'
 
 for num_vortexes in product([0,1],[0,1]):  # , (1, 0)
     for d in d_list:
-        lat = HexagonalLattice(d)
-        lat.set_boundary([(ix, iy, s) for ix in range(lat.size[0]) for iy in [0, lat.size[1]-1] for s in (0, 1)], 'X')
+        lat = HexagonalLatticeShearedOnCylinder(d)
         # try:
         simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
                            logical_op_directions, num_vortexes, lat, get_reps_by_graph_dist=True,
