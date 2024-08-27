@@ -208,13 +208,13 @@ class FloquetCode:
         for bond in self.bonds:
             qubits = [self.lat.site_to_index.get(site, self.boundary_ancilla) for site in bond.sites]
             tp = [[stim.target_x, stim.target_y, stim.target_z, stim.target_z]["XYZI".index(p)] for p in bond.pauli_label]
-            if len(qubits) == 2:
+            if len(bond.pauli_label.replace('I','')) == 2:
                 circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), tp[1](qubits[1])])
             else:
                 # circ.append_operation("M"+bond.pauli_label[0], [qubits[0]])
                 # reset an ancilla at index self.num_data_qubits()+1 then do a parity measurement
-                circ.append_operation("R", [self.boundary_ancilla])
-                circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), stim.target_z(self.boundary_ancilla)])
+                # circ.append_operation("R", [self.boundary_ancilla])
+                circ.append_operation("M"+bond.pauli_label[0], [qubits[0]])
             bond.measurement_indexes.append(i_meas)
 
             # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator

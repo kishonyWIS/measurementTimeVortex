@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import Optional, Callable
+
+from IPython.core.pylabtools import figsize
 from qiskit.quantum_info import Pauli
 
 
@@ -126,7 +128,7 @@ class Lattice:
             raise ValueError(f"Invalid direction {direction}")
 
     def draw(self):
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 10))
 
         pos = nx.get_node_attributes(self.G, 'pos')
         edge_colors = [int_to_color(self.G[u][v]['color']) for u, v in self.G.edges()]
