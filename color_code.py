@@ -60,7 +60,7 @@ class FloquetCode:
             edge_data['bonds'] = []
             # sort the sites so that the first is not a boundary site
             sites = [edge[0], edge[1]]
-            sites = sorted(sites, key=lambda s: not self.lat.G.nodes[s]['boundary'])
+            sites = sorted(sites, key=lambda s: self.lat.G.nodes[s]['boundary'] is not False)
             boundary_type = self.lat.G.nodes[sites[1]]['boundary']
             if not boundary_type:
                 pauli_labels = ['XX', 'ZZ']
@@ -122,7 +122,7 @@ class FloquetCode:
                     detector_indexes=None, detector_args=None, draw=True):
         circ = stim.Circuit()
         for site, data in self.lat.G.nodes.items():
-            circ.append_operation("QUBIT_COORDS", [self.lat.get_index_from_site(site)], data['pos'])
+            circ.append_operation("QUBIT_COORDS", self.lat.site_to_index.get(site, []), data['pos'])
         for bond in self.bonds:
             bond.measurement_indexes = []
 
@@ -136,7 +136,7 @@ class FloquetCode:
                                                              'index': i_logical}
 
         if logical_operator_pauli_type == 'X':
-            circ.append_operation("H", list(lattice.site_to_index.values()))
+            circ.append_operation("H", list(self.lat.site_to_index.values()))
 
         i_meas = 0
 

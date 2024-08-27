@@ -91,7 +91,10 @@ class HexagonalLattice:
                 if neighbor in boundary_sites:
                     edges_to_remove.append((site, neighbor))
         self.G.remove_edges_from(edges_to_remove)
-        self.G.remove_nodes_from(boundary_sites)
+        # remove edges_to_remove from all plaquettes
+        for plaquette in self.plaquettes.values():
+            plaquette.edges = [(site1, site2) for site1, site2 in plaquette.edges
+                               if (site1, site2) not in edges_to_remove and (site2, site1) not in edges_to_remove]
 
         # Reindex the nodes after removing the boundary nodes
         self.assign_indices()
@@ -104,9 +107,9 @@ class HexagonalLattice:
 
     def get_sites_on_logical_path(self, direction='x'):
         if direction == 'x':
-            return [(ix, 0, s) for ix in range(self.size[0]) for s in range(2)]
+            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(2)]
         elif direction == 'y':
-            return [(0, iy, s) for iy in range(self.size[1]) for s in range(2)]
+            return [(2, iy, s) for iy in range(self.size[1]) for s in range(2)]
         else:
             raise ValueError(f"Invalid direction {direction}")
 
