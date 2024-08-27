@@ -223,7 +223,9 @@ def parity_measurement_with_noise_before(
     if t2.is_z_target:
         circuit.append_operation('ZCX', [t2.value, ancilla])
 
+    # circuit.append_operation('X_ERROR', [ancilla], p)
     circuit.append_operation('M', [ancilla])
+    # circuit.append_operation(noise_type, [t1.value, t2.value], p)
 
     return circuit
 
