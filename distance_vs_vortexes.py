@@ -3,7 +3,7 @@ from lattice import *
 from noise import get_noise_model
 from matplotlib import pyplot as plt
 
-logical_op_directions = ('x',)
+logical_op_directions = ('y',)
 reps_without_noise = 2
 if logical_op_directions[0] == 'x':
     detectors = ('Z',)
@@ -15,21 +15,23 @@ noise_type = 'DEPOLARIZE1'
 draw = False
 
 # num_vortexes = (0, 0)
-# dx_list, dy_list = [2,4,6], [3,6,9] # dx_list, dy_list = [3,6,9], [3,6,9]
+# dx_list, dy_list = [2,4,6], [3,6,9] #dx_list, dy_list = [3,6,9], [3,6,9] #dx_list, dy_list = [2,4,6,10], [3,6,9,15] #
 # dists = np.zeros((len(dx_list), len(dy_list)))
 # for i, dx in enumerate(dx_list):
 #     for j, dy in enumerate(dy_list):
 
-dx = 4
-dy = 6
-vx_list = [-1,0,1]
-vy_list = [-1,0,1]
+dx = 9#6
+dy = 9
+vx_list = [-2,-1,0,1,2]
+vy_list = [-2,-1,0,1,2]
 dists = np.zeros((len(vx_list), len(vy_list)))
 
 for i, vx in enumerate(vx_list):
     for j, vy in enumerate(vy_list):
         num_vortexes = (vx, vy)
-        lat = HexagonalLatticeGidney((dx, dy))
+
+
+        lat = HexagonalLatticeSheared((dx, dy))
 
         try:
             code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
