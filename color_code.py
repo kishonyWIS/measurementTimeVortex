@@ -3,7 +3,7 @@ from copy import copy
 
 import numpy as np
 
-from entanglement import num_logical_qubits
+from entanglement import get_num_logical_qubits
 import stim
 import pymatching
 from itertools import product
@@ -127,7 +127,7 @@ class FloquetCode:
             angle = np.arctan2(pos[1] - hole_pos[1], pos[0] - hole_pos[0])
             distance = np.linalg.norm(np.array(pos) - np.array(hole_pos))
             return (angle / (2 * np.pi) * self.num_vortexes[0] +
-                    distance / np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[1])
+                    distance / np.linalg.norm(self.lat.lattice_vectors[0]) / (self.lat.size[0] / 2) * self.num_vortexes[1])
         else:
             raise ValueError(f'Cant add vortex to lattice type {type(self.lat).__name__}')
 
@@ -140,7 +140,7 @@ class FloquetCode:
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
-                    detector_indexes=None, detector_args=None, draw=True):
+                    detector_indexes=None, detector_args=None, draw=True, return_num_logical_qubits=False):
         circ = stim.Circuit()
         for site, data in self.lat.G.nodes.items():
             circ.append_operation("QUBIT_COORDS", self.lat.site_to_index.get(site, []), data['pos'])
@@ -210,7 +210,8 @@ class FloquetCode:
                                       logical['index'])
 
         # check how many logical qubits are in the code
-        print('num logical qubits: ', num_logical_qubits(circ, list(range(self.num_data_qubits))))
+        num_logical_qubits = get_num_logical_qubits(circ, list(range(self.num_data_qubits)))
+        print('num logical qubits: ', num_logical_qubits)
 
         # Finish circuit with data measurements according to logical operator
         for direction, logical in logical_operators.items():
@@ -222,7 +223,10 @@ class FloquetCode:
                                       [stim.target_rec(i - len(qubits_in_basis))
                                        for i in range(len(qubits_in_basis))],
                                       logical['index'])
-        return circ, detector_indexes, detector_args
+        if return_num_logical_qubits:
+            return circ, detector_indexes, detector_args, num_logical_qubits
+        else:
+            return circ, detector_indexes, detector_args
 
     def get_measurements_layer(self, i_meas, logical_operator_pauli_type, logical_operators):
         circ = stim.Circuit()
