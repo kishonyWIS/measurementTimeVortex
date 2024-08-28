@@ -111,7 +111,7 @@ class FloquetCode:
         return self.num_data_qubits + 1
 
     def location_dependent_delay(self, edge_data):
-        if 'Gidney' in type(self.lat).__name__:
+        if type(self.lat) in [HexagonalLatticeGidneyOnCylinder, HexagonalLatticeGidney]:
             pos = edge_data['pos']
             return (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
                     pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
@@ -119,6 +119,17 @@ class FloquetCode:
             coords = edge_data['coords']
             return (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
                     coords[1] / self.lat.size[1] * self.num_vortexes[1])
+        elif type(self.lat) is HexagonalLatticeGidneyOnPlaneWithHole:
+            pos = edge_data['pos']
+            hole_coords = (self.lat.size[0]//2, self.lat.size[1]//2, 0)
+            hole_pos = self.lat.plaquettes[hole_coords].pos
+            # measure angle and distance of pos with respect to hole_pos
+            angle = np.arctan2(pos[1] - hole_pos[1], pos[0] - hole_pos[0])
+            distance = np.linalg.norm(np.array(pos) - np.array(hole_pos))
+            return (angle / (2 * np.pi) * self.num_vortexes[0] +
+                    distance / np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[1])
+        else:
+            raise ValueError(f'Cant add vortex to lattice type {type(self.lat).__name__}')
 
     def get_bond_order(self, edge_data, pauli_label):
         color = edge_data['color']

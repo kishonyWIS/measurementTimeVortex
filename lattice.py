@@ -132,7 +132,7 @@ class Lattice:
 
         pos = nx.get_node_attributes(self.G, 'pos')
         edge_colors = [int_to_color(self.G[u][v]['color']) for u, v in self.G.edges()]
-        nx.draw(self.G, pos, ax=ax, with_labels=True, edge_color=edge_colors, width=3, node_size=300, font_size=8)
+        nx.draw(self.G, pos, ax=ax, with_labels=True, edge_color=edge_colors, width=3, node_size=20, node_color='grey', font_size=8)
 
         # Draw plaquettes with different colors
         for plaquette in self.plaquettes.values():
@@ -184,6 +184,25 @@ class HexagonalLatticeGidneyOnCylinder(HexagonalLatticeGidney):
         super().__init__(size)
         self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
 
+
+class HexagonalLatticeGidneyOnPlaneWithHole(HexagonalLatticeGidney):
+    def __init__(self, size, hole_size=(2,2)):
+        super().__init__(size)
+        hole_x, hole_y = self.size[0]//2, self.size[1]//2
+        self.hole_xs = range(hole_x-hole_size[0]//2, hole_x+hole_size[0]//2)
+        self.hole_ys = range(hole_y-hole_size[1]//2, hole_y+hole_size[1]//2)
+        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
+        self.set_boundary([(ix, iy, s) for ix in [0, self.size[0]-1] for iy in range(self.size[1]) for s in range(len(self.sublat_offsets))], 'X')
+        self.set_boundary([(ix, iy, s) for ix in self.hole_xs for iy in self.hole_ys for s in range(len(self.sublat_offsets))], 'X')
+
+    def get_sites_on_logical_path(self, direction:str='around_hole'):
+        if direction == 'around_hole':
+            return [(ix, iy, s) for ix in range(self.hole_xs[0]-1, self.hole_xs[-1]+2) for iy in [self.hole_ys[0]-1, self.hole_ys[-1]+1] for s in range(4)] + \
+                     [(ix, iy, s) for ix in [self.hole_xs[0]-1, self.hole_xs[-1]+1] for iy in range(self.hole_ys[0]-1, self.hole_ys[-1]+2) for s in [0,1]]
+        elif direction == 'edge_to_hole':
+            return [(self.hole_xs[-1], iy, s) for iy in range(0, self.hole_ys[0]+1) for s in [0,1]]
+        else:
+            raise ValueError(f"Invalid direction {direction}")
 
 if __name__ == '__main__':
     # Add a hexagonal lattice with skewed coordinates, periodic boundary conditions, and plaquettes

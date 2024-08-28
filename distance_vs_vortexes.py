@@ -3,15 +3,28 @@ from lattice import *
 from noise import get_noise_model
 from matplotlib import pyplot as plt
 
-logical_op_directions = ('y',)
-reps_without_noise = 2
-if logical_op_directions[0] == 'x':
+logical_op_directions = ('edge_to_hole',)
+if logical_op_directions[0] == 'edge_to_hole':
+    detectors = ('X',)
+    logical_operator_pauli_type = 'X'
+elif logical_op_directions[0] == 'around_hole':
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
 else:
-    detectors = ('X',)
-    logical_operator_pauli_type = 'X'
+    raise ValueError(f'Unknown logical_op_directions: {logical_op_directions}')
+
+# logical_op_directions = ('x',)
+# if logical_op_directions[0] == 'x':
+#     detectors = ('Z',)
+#     logical_operator_pauli_type = 'Z'
+# elif logical_op_directions[0] == 'y':
+#     detectors = ('X',)
+#     logical_operator_pauli_type = 'X'
+# else:
+#     raise ValueError(f'Unknown logical_op_directions: {logical_op_directions}')
+
 noise_type = 'DEPOLARIZE1'
+reps_without_noise = 2
 draw = False
 
 # num_vortexes = (0, 0)
@@ -20,10 +33,10 @@ draw = False
 # for i, dx in enumerate(dx_list):
 #     for j, dy in enumerate(dy_list):
 
-dx = 6
-dy = 9
-vx_list = [-2,-1,0,1,2]
-vy_list = [-2,-1,0,1,2]
+dx = 10
+dy = 15
+vx_list = [-2,-1,0,1,2]#[-2,-1,0,1,2]
+vy_list = [-2,-1,0,1,2]#[-2,-1,0,1,2]
 dists = np.zeros((len(vx_list), len(vy_list)))
 
 for i, vx in enumerate(vx_list):
@@ -31,20 +44,20 @@ for i, vx in enumerate(vx_list):
         num_vortexes = (vx, vy)
 
 
-        lat = HexagonalLatticeGidney((dx, dy))
+        lat = HexagonalLatticeGidneyOnPlaneWithHole((dx, dy))
 
-        try:
-            code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
-            circ, _, _ = code.get_circuit(reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
-                noise_model = get_noise_model(noise_type, 0.1),
-                logical_operator_pauli_type=logical_operator_pauli_type,
-                logical_op_directions=logical_op_directions,
-                detector_indexes=None, detector_args=None, draw=draw)
-            dist = len(circ.shortest_graphlike_error())
-            print(f'dist={dist}')
-            dists[i,j] = dist
-        except:
-            print(f'Failed to simulate for dx:{dx},dy:{dy} and num_vortexes={num_vortexes}')
+        # try:
+        code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
+        circ, _, _ = code.get_circuit(reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
+            noise_model = get_noise_model(noise_type, 0.1),
+            logical_operator_pauli_type=logical_operator_pauli_type,
+            logical_op_directions=logical_op_directions,
+            detector_indexes=None, detector_args=None, draw=draw)
+        dist = len(circ.shortest_graphlike_error())
+        print(f'dist={dist}')
+        dists[i,j] = dist
+        # except:
+        #     print(f'Failed to simulate for dx:{dx},dy:{dy} and num_vortexes={num_vortexes}')
 
 # plt.pcolor(dists.T)
 # plt.xticks(np.arange(len(dx_list))+0.5, dx_list)
