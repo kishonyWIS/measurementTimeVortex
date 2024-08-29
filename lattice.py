@@ -43,6 +43,16 @@ class Lattice:
         self.create_plaquettes_and_colors()
         self.assign_indices()
 
+    def unwrap_periodic(self, sites, return_was_wrapped=False):
+        was_wrapped = False
+        ref_site = sites[0]
+        unwrapped_sites = [ref_site]
+        for site in sites[1:]:
+            shifted_site, cur_was_wrapped = self.shift_site(site, np.round(np.array(ref_site) - np.array(site))/np.array(self.size), return_was_wrapped=True)
+            unwrapped_sites.append(shifted_site)
+            was_wrapped = was_wrapped or cur_was_wrapped
+        return unwrapped_sites, was_wrapped if return_was_wrapped else unwrapped_sites
+
     def shift_site(self, site, shift, return_was_wrapped=False):
         shifted_site = np.array(site) + np.array(shift)
         shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublat_offsets)]))
