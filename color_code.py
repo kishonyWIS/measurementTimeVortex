@@ -113,12 +113,12 @@ class FloquetCode:
     def location_dependent_delay(self, edge_data):
         if type(self.lat) in [HexagonalLatticeGidneyOnCylinder, HexagonalLatticeGidney]:
             pos = edge_data['pos']
-            return (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
+            delay = (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
                     pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
         elif 'Sheared' in type(self.lat).__name__:
             coords = edge_data['coords']
-            return (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
-                    coords[1] / self.lat.size[1] * self.num_vortexes[1])
+            delay =  (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
+                      coords[1] / self.lat.size[1] * self.num_vortexes[1])
         elif type(self.lat) is HexagonalLatticeGidneyOnPlaneWithHole:
             pos = edge_data['pos']
             hole_coords = (self.lat.size[0]//2, self.lat.size[1]//2, 0)
@@ -126,10 +126,11 @@ class FloquetCode:
             # measure angle and distance of pos with respect to hole_pos
             angle = np.arctan2(pos[1] - hole_pos[1], pos[0] - hole_pos[0])
             distance = np.linalg.norm(np.array(pos) - np.array(hole_pos))
-            return (angle / (2 * np.pi) * self.num_vortexes[0] +
-                    distance / np.linalg.norm(self.lat.lattice_vectors[0]) / (self.lat.size[0] / 2) * self.num_vortexes[1])
+            delay = (angle / (2 * np.pi) * self.num_vortexes[0] +
+                     distance / np.linalg.norm(self.lat.lattice_vectors[0]) / (self.lat.size[0] / 2) * self.num_vortexes[1])
         else:
             raise ValueError(f'Cant add vortex to lattice type {type(self.lat).__name__}')
+        return delay%1
 
     def get_bond_order(self, edge_data, pauli_label):
         color = edge_data['color']
@@ -293,7 +294,7 @@ class FloquetCode:
     def bond_to_full_pauli(self, bond):
         return self.pauli_string_on_sites_to_Pauli(bond.pauli_label, bond.sites)
 
-    def draw_pauli(self, pauli: Pauli):
+    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True):
         self.lat.draw()
         ax = plt.gca()
         for bond in self.bonds:
@@ -308,6 +309,11 @@ class FloquetCode:
             y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
             ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center',
                     va='center')
+            if color_bonds_by_delay:
+                # set the color to be the bond.order
+                ax.plot(xs, ys, color=plt.cm.viridis(
+                    self.location_dependent_delay(self.lat.G.edges[sites[0], sites[1]])
+                ), linewidth=3)
         if pauli is not None:
             for i, pp in enumerate(pauli[::-1]):
                 p = pp.to_label()
@@ -319,6 +325,9 @@ class FloquetCode:
                     ax.plot(x, y, 'co', markersize=20)
                     ax.text(x, y, p, fontsize=20, ha='center', va='center')
         ax.set_aspect('equal')
+        if color_bonds_by_delay:
+            # shrink the colorbar
+            plt.colorbar(plt.cm.ScalarMappable(cmap='viridis'), ax=ax, label='Bond delay', shrink=0.3)
         plt.show()
 
 
