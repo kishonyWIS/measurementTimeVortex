@@ -14,9 +14,8 @@ def parse_tuple(value):
     return ast.literal_eval(value)
 
 # Read the CSV, applying the converter to a specific column
-df = pd.read_csv('data/threshold_torus.csv', converters={'num_vortexes': parse_tuple})
+df = pd.read_csv('data/threshold.csv', converters={'num_vortexes': parse_tuple})
 df = df.drop(columns=['Unnamed: 0'])
-df = df.query('geometry == "SymmetricTorus"')
 
 # Display the first few rows of the DataFrame for verification
 print(df.head())

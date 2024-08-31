@@ -7,7 +7,7 @@ import stim
 ANY_CLIFFORD_1_OPS = {"C_XYZ", "C_ZYX", "H", "H_YZ", "I"}
 ANY_CLIFFORD_2_OPS = {"CX", "CY", "CZ", "XCX", "XCY", "XCZ", "YCX", "YCY", "YCZ"}
 RESET_OPS = {"R", "RX", "RY"}
-MEASURE_OPS = {"M", "MX", "MY"}
+MEASURE_OPS = {"M", "MX", "MY", "MZ"}
 ANNOTATION_OPS = {"OBSERVABLE_INCLUDE", "DETECTOR", "SHIFT_COORDS", "QUBIT_COORDS", "TICK"}
 
 
@@ -56,6 +56,10 @@ class NoiseModel:
             parity_measurement_noise=partial(parity_measurement_with_noise_before, noise_type=noise_type),
             noisy_gates={
                 "MPP": p,
+                "M": p,
+                "MX": p,
+                "MY": p,
+                "MZ": p,
             },
         )
 
@@ -65,7 +69,10 @@ class NoiseModel:
         targets = op.targets_copy()
         args = op.gate_args_copy()
         if p > 0:
-            if op.name == "MPP":
+            if op.name in MEASURE_OPS:
+                result.append_operation("DEPOLARIZE1", targets, p)
+                result.append_operation(op.name, targets, args)
+            elif op.name == "MPP":
                 assert len(targets) % 3 == 0 and all(t.is_combiner for t in targets[1::3]), repr(op)
                 assert args == [] or args == [0]
 
@@ -207,7 +214,8 @@ def parity_measurement_with_noise_before(
 
     circuit = stim.Circuit()
     circuit.append_operation('R', [ancilla])
-    circuit.append_operation(noise_type, [t1.value, t2.value], p)
+    noise_targets = [t1.value, t2.value]
+    circuit.append_operation(noise_type, noise_targets, p)
 
     if t1.is_x_target:
         circuit.append_operation('XCX', [t1.value, ancilla])
@@ -225,7 +233,7 @@ def parity_measurement_with_noise_before(
 
     # circuit.append_operation('X_ERROR', [ancilla], p)
     circuit.append_operation('M', [ancilla])
-    # circuit.append_operation(noise_type, [t1.value, t2.value], p)
+    # circuit.append_operation(noise_type, noise_targets, p)
 
     return circuit
 

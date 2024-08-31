@@ -1,7 +1,9 @@
 import os
 from copy import copy
 
-from entanglement import num_logical_qubits
+import numpy as np
+
+from entanglement import get_num_logical_qubits
 import stim
 import pymatching
 from itertools import product
@@ -71,7 +73,7 @@ class FloquetCode:
             else:
                 raise ValueError(f'Unknown boundary type {boundary_type}')
             for pauli_label in pauli_labels:
-                order = self.get_bond_order(edge_data['coords'], edge_data['color'], pauli_label)
+                order = self.get_bond_order(edge_data, pauli_label)
                 bond = Bond(sites, pauli_label, order)
                 bonds.append(bond)
                 edge_data['bonds'].append(bond)
@@ -108,18 +110,38 @@ class FloquetCode:
     def boundary_ancilla(self):
         return self.num_data_qubits + 1
 
-    def location_dependent_delay(self, coords):
-        return coords[0] / self.lat.size[0] * self.num_vortexes[0] + coords[1] / self.lat.size[1] * self.num_vortexes[1]
+    def location_dependent_delay(self, edge_data):
+        if type(self.lat) in [HexagonalLatticeGidneyOnCylinder, HexagonalLatticeGidney]:
+            pos = edge_data['pos']
+            delay = (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
+                    pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
+        elif 'Sheared' in type(self.lat).__name__:
+            coords = edge_data['coords']
+            delay =  (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
+                      coords[1] / self.lat.size[1] * self.num_vortexes[1])
+        elif type(self.lat) is HexagonalLatticeGidneyOnPlaneWithHole:
+            pos = edge_data['pos']
+            hole_coords = (self.lat.size[0]//2, self.lat.size[1]//2, 0)
+            hole_pos = self.lat.plaquettes[hole_coords].pos
+            # measure angle and distance of pos with respect to hole_pos
+            angle = np.arctan2(pos[1] - hole_pos[1], pos[0] - hole_pos[0])
+            distance = np.linalg.norm(np.array(pos) - np.array(hole_pos))
+            delay = (angle / (2 * np.pi) * self.num_vortexes[0] +
+                     distance / np.linalg.norm(self.lat.lattice_vectors[0]) / (self.lat.size[0] / 2) * self.num_vortexes[1])
+        else:
+            raise ValueError(f'Cant add vortex to lattice type {type(self.lat).__name__}')
+        return delay%1
 
-    def get_bond_order(self, coords, color, pauli_label):
+    def get_bond_order(self, edge_data, pauli_label):
+        color = edge_data['color']
         order_without_vortex = (-color / 3 + ('Z' in pauli_label) / 2) % 1
-        order = order_without_vortex + self.location_dependent_delay(coords)
+        order = order_without_vortex + self.location_dependent_delay(edge_data)
         order = order % 1
         return order
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
-                    detector_indexes=None, detector_args=None, draw=True):
+                    detector_indexes=None, detector_args=None, draw=True, return_num_logical_qubits=False):
         circ = stim.Circuit()
         for site, data in self.lat.G.nodes.items():
             circ.append_operation("QUBIT_COORDS", self.lat.site_to_index.get(site, []), data['pos'])
@@ -189,7 +211,8 @@ class FloquetCode:
                                       logical['index'])
 
         # check how many logical qubits are in the code
-        print('num logical qubits: ', num_logical_qubits(circ, list(range(self.num_data_qubits))))
+        num_logical_qubits = get_num_logical_qubits(circ, list(range(self.num_data_qubits)))
+        print('num logical qubits: ', num_logical_qubits)
 
         # Finish circuit with data measurements according to logical operator
         for direction, logical in logical_operators.items():
@@ -201,20 +224,23 @@ class FloquetCode:
                                       [stim.target_rec(i - len(qubits_in_basis))
                                        for i in range(len(qubits_in_basis))],
                                       logical['index'])
-        return circ, detector_indexes, detector_args
+        if return_num_logical_qubits:
+            return circ, detector_indexes, detector_args, num_logical_qubits
+        else:
+            return circ, detector_indexes, detector_args
 
     def get_measurements_layer(self, i_meas, logical_operator_pauli_type, logical_operators):
         circ = stim.Circuit()
         for bond in self.bonds:
             qubits = [self.lat.site_to_index.get(site, self.boundary_ancilla) for site in bond.sites]
             tp = [[stim.target_x, stim.target_y, stim.target_z, stim.target_z]["XYZI".index(p)] for p in bond.pauli_label]
-            if len(qubits) == 2:
+            if len(bond.pauli_label.replace('I','')) == 2:
                 circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), tp[1](qubits[1])])
             else:
                 # circ.append_operation("M"+bond.pauli_label[0], [qubits[0]])
                 # reset an ancilla at index self.num_data_qubits()+1 then do a parity measurement
-                circ.append_operation("R", [self.boundary_ancilla])
-                circ.append_operation("MPP", [tp[0](qubits[0]), stim.target_combiner(), stim.target_z(self.boundary_ancilla)])
+                # circ.append_operation("R", [self.boundary_ancilla])
+                circ.append_operation("M"+bond.pauli_label[0], [qubits[0]])
             bond.measurement_indexes.append(i_meas)
 
             # if the measured bond is in sites_on_logical_path, and of the same pauli type as the logical operator, include it in the logical operator
@@ -268,7 +294,7 @@ class FloquetCode:
     def bond_to_full_pauli(self, bond):
         return self.pauli_string_on_sites_to_Pauli(bond.pauli_label, bond.sites)
 
-    def draw_pauli(self, pauli: Pauli):
+    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True):
         self.lat.draw()
         ax = plt.gca()
         for bond in self.bonds:
@@ -283,6 +309,11 @@ class FloquetCode:
             y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
             ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center',
                     va='center')
+            if color_bonds_by_delay:
+                # set the color to be the bond.order
+                ax.plot(xs, ys, color=plt.cm.viridis(
+                    self.location_dependent_delay(self.lat.G.edges[sites[0], sites[1]])
+                ), linewidth=3)
         if pauli is not None:
             for i, pp in enumerate(pauli[::-1]):
                 p = pp.to_label()
@@ -294,6 +325,9 @@ class FloquetCode:
                     ax.plot(x, y, 'co', markersize=20)
                     ax.text(x, y, p, fontsize=20, ha='center', va='center')
         ax.set_aspect('equal')
+        if color_bonds_by_delay:
+            # shrink the colorbar
+            plt.colorbar(plt.cm.ScalarMappable(cmap='viridis'), ax=ax, label='Bond delay', shrink=0.3)
         plt.show()
 
 

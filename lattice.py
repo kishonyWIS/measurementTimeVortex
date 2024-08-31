@@ -3,6 +3,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import Optional, Callable
+
+from IPython.core.pylabtools import figsize
 from qiskit.quantum_info import Pauli
 
 
@@ -25,11 +27,11 @@ class Plaquette:
 
 class Lattice:
     def __init__(self, size,
-                 lattice_vectors:list[tuple], sublab_offsets:list[np.ndarray[2]],
+                 lattice_vectors:list[tuple], sublat_offsets:list[np.ndarray[2]],
                  edges_shifts: list[tuple[tuple[int,int,int],tuple[int,int,int]]],
                  plaquette_shifts: list[tuple[tuple[int,int,int], ...]]):
         self.lattice_vectors = list(map(np.array, lattice_vectors))
-        self.sublab_offsets = sublab_offsets
+        self.sublat_offsets = sublat_offsets
         self.edges_shifts = edges_shifts
         self.plaquette_shifts = plaquette_shifts
         self.plaquettes = {}
@@ -41,19 +43,29 @@ class Lattice:
         self.create_plaquettes_and_colors()
         self.assign_indices()
 
+    def unwrap_periodic(self, sites, return_was_wrapped=False):
+        was_wrapped = False
+        ref_site = sites[0]
+        unwrapped_sites = [ref_site]
+        for site in sites[1:]:
+            shifted_site, cur_was_wrapped = self.shift_site(site, np.round(np.array(ref_site) - np.array(site))/np.array(self.size), return_was_wrapped=True)
+            unwrapped_sites.append(shifted_site)
+            was_wrapped = was_wrapped or cur_was_wrapped
+        return unwrapped_sites, was_wrapped if return_was_wrapped else unwrapped_sites
+
     def shift_site(self, site, shift, return_was_wrapped=False):
         shifted_site = np.array(site) + np.array(shift)
-        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublab_offsets)]))
+        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublat_offsets)]))
         was_wrapped = not np.allclose(shifted_site_mod_size, shifted_site)
         return shifted_site_mod_size, was_wrapped if return_was_wrapped else shifted_site_mod_size
 
     def coords_to_pos(self, coords):
         return tuple(np.sum([coord * vec for coord,vec in zip(coords[:-1],self.lattice_vectors)], axis=0) +
-                     np.array(self.sublab_offsets[coords[2]]))
+                     np.array(self.sublat_offsets[coords[2]]))
 
     def create_graph(self):
         for row, col in np.ndindex(self.size):
-            for sublat in range(len(self.sublab_offsets)):
+            for sublat in range(len(self.sublat_offsets)):
                 site1 = (row, col, sublat)
                 self.G.add_node(site1, pos=tuple(self.coords_to_pos(site1)), boundary=False)
 
@@ -119,18 +131,18 @@ class Lattice:
 
     def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
-            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(len(self.sublab_offsets))]
+            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(len(self.sublat_offsets))]
         elif direction == 'y':
-            return [(2, iy, s) for iy in range(self.size[1]) for s in range(len(self.sublab_offsets))]
+            return [(2, iy, s) for iy in range(self.size[1]) for s in range(len(self.sublat_offsets))]
         else:
             raise ValueError(f"Invalid direction {direction}")
 
     def draw(self):
-        fig, ax = plt.subplots()
+        fig, ax = plt.subplots(figsize=(10, 10))
 
         pos = nx.get_node_attributes(self.G, 'pos')
         edge_colors = [int_to_color(self.G[u][v]['color']) for u, v in self.G.edges()]
-        nx.draw(self.G, pos, ax=ax, with_labels=True, edge_color=edge_colors, width=3, node_size=300, font_size=8)
+        nx.draw(self.G, pos, ax=ax, with_labels=True, edge_color=edge_colors, width=3, node_size=20, node_color='grey', font_size=8)
 
         # Draw plaquettes with different colors
         for plaquette in self.plaquettes.values():
@@ -148,10 +160,10 @@ class HexagonalLatticeSheared(Lattice):
     '''
     def __init__(self, size: tuple):
         lattice_vectors = [(np.sqrt(3), 0), (np.sqrt(3) / 2, 1.5)]
-        sublab_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
+        sublat_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
         edges_shifts = [((0,0,1), (0,0,0)), ((0,0,1), (1,0,0)), ((0,0,1),(0,1,0))]
         plaquette_shifts = [((0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0))]
-        super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
+        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
 
 class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
     def __init__(self, size):
@@ -162,12 +174,12 @@ class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
 class HexagonalLatticeGidney(Lattice):
     def __init__(self, size):
         lattice_vectors = [(2,0), (0,2)]
-        sublab_offsets = [(0,0), (0,1), (1,0), (1,1)]
+        sublat_offsets = [(0,0), (0,1), (1,0), (1,1)]
         edges_shifts = [((0,0,0), (0,0,1)), ((0,0,2), (0,0,3)), ((0,0,1),(0,0,3)),
                         ((0,0,1), (0,1,0)), ((0,0,3), (0,1,2)), ((0,0,2), (1,0,0))]
         plaquette_shifts = [((0,0,1), (0,0,3), (0,1,2), (0,1,3), (0,1,1), (0,1,0)),
                             ((0,0,2), (0,0,3), (0,1,2), (1,1,0), (1,0,1), (1,0,0))]
-        super().__init__(size, lattice_vectors, sublab_offsets, edges_shifts, plaquette_shifts)
+        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
 
     def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
@@ -184,8 +196,27 @@ class HexagonalLatticeGidney(Lattice):
 class HexagonalLatticeGidneyOnCylinder(HexagonalLatticeGidney):
     def __init__(self, size):
         super().__init__(size)
-        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublab_offsets))], 'X')
+        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
 
+
+class HexagonalLatticeGidneyOnPlaneWithHole(HexagonalLatticeGidney):
+    def __init__(self, size, hole_size=(2,2)):
+        super().__init__(size)
+        hole_x, hole_y = self.size[0]//2, self.size[1]//2
+        self.hole_xs = range(hole_x-hole_size[0]//2, hole_x+hole_size[0]//2)
+        self.hole_ys = range(hole_y-hole_size[1]//2, hole_y+hole_size[1]//2)
+        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
+        self.set_boundary([(ix, iy, s) for ix in [0, self.size[0]-1] for iy in range(self.size[1]) for s in range(len(self.sublat_offsets))], 'X')
+        self.set_boundary([(ix, iy, s) for ix in self.hole_xs for iy in self.hole_ys for s in range(len(self.sublat_offsets))], 'X')
+
+    def get_sites_on_logical_path(self, direction:str='around_hole'):
+        if direction == 'around_hole':
+            return [(ix, iy, s) for ix in range(self.hole_xs[0]-1, self.hole_xs[-1]+2) for iy in [self.hole_ys[0]-1, self.hole_ys[-1]+1] for s in range(4)] + \
+                     [(ix, iy, s) for ix in [self.hole_xs[0]-1, self.hole_xs[-1]+1] for iy in range(self.hole_ys[0]-1, self.hole_ys[-1]+2) for s in [0,1]]
+        elif direction == 'edge_to_hole':
+            return [(self.hole_xs[-1], iy, s) for iy in range(0, self.hole_ys[0]+1) for s in [0,1]]
+        else:
+            raise ValueError(f"Invalid direction {direction}")
 
 if __name__ == '__main__':
     # Add a hexagonal lattice with skewed coordinates, periodic boundary conditions, and plaquettes

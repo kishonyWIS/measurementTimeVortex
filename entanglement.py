@@ -15,7 +15,7 @@ def entanglement_entropy(circ: stim.Circuit, qubits: list[int]) -> int:
     x_z_gf2 = galois.GF(2)(x_z_trucated.astype(int))
     return np.linalg.matrix_rank(x_z_gf2) - len(qubits)
 
-def num_logical_qubits(circ, qubits: list[int]) -> int:
+def get_num_logical_qubits(circ, qubits: list[int]) -> int:
     circ_from_maximally_mixed = stim.Circuit()
     for q in qubits:
         circ_from_maximally_mixed.append_operation('H', [q])
@@ -29,4 +29,4 @@ if __name__ == '__main__':
     circ.append_operation('MZZ', [0, 1])
     circ.append_operation('MZZ', [1, 2])
 
-    print(num_logical_qubits(circ, qubits=range(circ.num_qubits)))
+    print(get_num_logical_qubits(circ, qubits=range(circ.num_qubits)))
