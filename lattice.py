@@ -143,7 +143,10 @@ class Lattice:
 
 
 class HexagonalLatticeSheared(Lattice):
-    def __init__(self, size):
+    '''
+    Hexagonal lattice on Torus
+    '''
+    def __init__(self, size: tuple):
         lattice_vectors = [(np.sqrt(3), 0), (np.sqrt(3) / 2, 1.5)]
         sublab_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
         edges_shifts = [((0,0,1), (0,0,0)), ((0,0,1), (1,0,0)), ((0,0,1),(0,1,0))]
@@ -154,6 +157,7 @@ class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
     def __init__(self, size):
         super().__init__(size)
         self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in (0, 1)], 'X')
+
 
 class HexagonalLatticeGidney(Lattice):
     def __init__(self, size):

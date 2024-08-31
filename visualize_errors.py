@@ -45,7 +45,7 @@ def draw_pauli_3d(code, ax=None, z_plane=0):
 
 
 
-def draw_shortest_error(circ: stim.Circuit, draw_graph=False):
+def draw_shortest_error(circ: stim.Circuit, draw_graph=False, planar=False):
     fig = plt.figure()
     ax = fig.add_subplot(projection = '3d')
     if draw_graph:
@@ -70,6 +70,8 @@ def draw_shortest_error(circ: stim.Circuit, draw_graph=False):
     corner = code.geometry.site_to_physical_location([dx,dy,2])
     ax.set_box_aspect([corner[0]/corner[1], 1, 1])  # x:y:z ratio
     draw_pauli_3d(code, ax=ax, z_plane=min(coords[:,2]))
+    if planar:
+        ax.view_init(elev=90, azim=0)
 
 
 if __name__ == '__main__':
@@ -78,14 +80,15 @@ if __name__ == '__main__':
     logical_op_directions = ('x')
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
-    num_vortexes = (0, 1)  # (0,1)
-    dx, dy = 12, 6
+    num_vortexes = (0, -2)  # (0,1)
+    dx, dy = 15, 12
     reps_without_noise = 1
     reps_with_noise = 1
     noise_type = 'DEPOLARIZE1'
 
-    code = FloquetCode(dx, dy, boundary_conditions=boundary_conditions,
-                       num_vortexes=num_vortexes, geometry=geometry, detectors=detectors)
+    lat = HexagonalLatticeSheared((dx,dy))
+
+    code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors
 
     circ, _, _ = code.get_circuit(
         reps=reps_with_noise + 2 * reps_without_noise, reps_without_noise=reps_without_noise,
@@ -121,6 +124,6 @@ if __name__ == '__main__':
         detector_indexes=None, detector_args=None)
 
     print(len(circ.shortest_graphlike_error()))
-    draw_shortest_error(circ, draw_graph=False)
+    draw_shortest_error(circ, draw_graph=False, planar=True)
     # plt.axis('equal')
     plt.show()
