@@ -1,8 +1,5 @@
 import os
 from copy import copy
-
-import numpy as np
-
 from entanglement import get_num_logical_qubits
 import stim
 import pymatching

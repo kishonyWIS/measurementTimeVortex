@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from dataclasses import dataclass
 from typing import Optional, Callable
+from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from IPython.core.pylabtools import figsize
 from qiskit.quantum_info import Pauli
@@ -152,6 +153,65 @@ class Lattice:
                                   zorder=-1)
             ax.add_patch(hexagon)
         ax.set_aspect('equal')
+
+    def draw_3d(self, zplane=0, ax=None):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(projection='3d')
+        pos = nx.get_node_attributes(self.G, 'pos')
+        for u, v in self.G.edges():
+            x = [pos[u][0], pos[v][0]]
+            y = [pos[u][1], pos[v][1]]
+            z = [zplane, zplane]
+            ax.plot(x, y, z, color='black')
+        for plaquette in self.plaquettes.values():
+            if plaquette.wrapped:
+                continue
+            points = [pos[v] for v in plaquette.sites]
+            points3d = [(x, y, zplane) for x, y in points]  # Add constant z-plane
+            hexagon = Poly3DCollection([points3d], facecolors=plaquette.color_str, alpha=0.5)
+            ax.add_collection3d(hexagon)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        plt.show()
+
+
+    # if ax is None:
+    #     fig = plt.figure(figsize=(12, 8))
+    #     ax = fig.add_subplot(111, projection='3d')
+    #
+    # # Draw plaquettes as shaded polygons
+    # for plaquette in code.plaquettes:
+    #     if plaquette.pauli_label == 'Z':
+    #         continue
+    #     sites, was_shifted = code.geometry.sites_unwrap_periodic(plaquette.sites, return_was_shifted=True)
+    #     if was_shifted:
+    #         continue
+    #     points = list(map(code.geometry.site_to_physical_location, sites))
+    #     points_3d = [(x, y, z_plane) for x, y in points]  # Add constant z-plane
+    #     color = code.geometry.get_plaquette_color(plaquette.coords)
+    #
+    #     # Create a 3D polygon
+    #     polygon = Poly3DCollection([points_3d], color=color, alpha=0.2)
+    #     ax.add_collection3d(polygon)
+    #
+    # # Draw bonds
+    # for bond in code.bonds:
+    #     sites = copy(bond.sites)
+    #     sites = code.geometry.sites_unwrap_periodic(sites)
+    #     points = [code.geometry.site_to_physical_location(site) for site in sites]
+    #     xs, ys = zip(*points)
+    #     zs = [z_plane] * len(xs)  # Set z to the constant plane
+    #     ax.plot(xs, ys, zs, 'k')
+    #
+    #     # Add bond label
+    #     x = np.mean(xs)
+    #     y = np.mean(ys)
+    #     z = z_plane
+    #     fontsize = 10
+    #     y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
+    #     # ax.text(x, y, z, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center', va='center')
 
 
 class HexagonalLatticeSheared(Lattice):
