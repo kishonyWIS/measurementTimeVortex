@@ -33,14 +33,14 @@ def draw_shortest_error(circ: stim.Circuit, draw_graph=False):
 
 
 if __name__ == '__main__':
-    lat = HexagonalLatticeGidney((4,6))
+    lat = HexagonalLatticeGidney((2,3))
     logical_op_directions = ('x',)
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
     num_vortexes = (0, 0)  # (0,1)
     reps_without_noise = 1
     reps_with_noise = 1
-    noise_type = 'DEPOLARIZE1'
+    noise_type = 'EM3_v2'#'EM3_v2'#'DEPOLARIZE1'
 
     code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
     circ, _, _, num_logicals = code.get_circuit(reps=reps_with_noise + 2 * reps_without_noise, reps_without_noise=reps_without_noise,
@@ -52,5 +52,5 @@ if __name__ == '__main__':
 
     print(len(circ.shortest_graphlike_error()))
     draw_shortest_error(circ, draw_graph=True)
-    # plt.axis('equal')
+    plt.axis('equal')
     plt.show()

@@ -6,6 +6,7 @@ from typing import Optional, Callable
 from mpl_toolkits.mplot3d.art3d import Poly3DCollection
 
 from IPython.core.pylabtools import figsize
+from pandas.core.array_algos.transforms import shift
 from qiskit.quantum_info import Pauli
 
 
@@ -44,15 +45,32 @@ class Lattice:
         self.create_plaquettes_and_colors()
         self.assign_indices()
 
+    def shift_site1_near_site2(self, site1, site2):
+        # shift site1 by a multiple of the lattice vectors to be close to site2 in terms of position
+        min_dist = np.inf
+        for i in range(-1, 2):
+            for j in range(-1, 2):
+                shifted_site = np.array(site1) + i * np.array([self.size[0], 0, 0]) + j * np.array([0, self.size[1], 0])
+                dist = np.linalg.norm(np.array(self.coords_to_pos(shifted_site)) - np.array(self.coords_to_pos(site2)))
+                if dist < min_dist:
+                    min_dist = dist
+                    best_shift = (i, j)
+        shifted_site = np.array(site1) + best_shift[0] * np.array([self.size[0], 0, 0]) + best_shift[1] * np.array([0, self.size[1], 0])
+        return shifted_site
+
     def unwrap_periodic(self, sites, return_was_wrapped=False):
         was_wrapped = False
-        ref_site = sites[0]
-        unwrapped_sites = [ref_site]
-        for site in sites[1:]:
-            shifted_site, cur_was_wrapped = self.shift_site(site, np.round(np.array(ref_site) - np.array(site))/np.array(self.size), return_was_wrapped=True)
+        # get the max and argmax
+        ref_i = np.argmax([sum(site) for site in sites])
+        ref_site = sites[ref_i]
+        unwrapped_sites = []
+        for site in sites[:ref_i] + sites[ref_i + 1:]:
+            # Shift site to be close to ref_site by a multiple of the lattice vectors
+            shifted_site = self.shift_site1_near_site2(site, ref_site)
             unwrapped_sites.append(shifted_site)
-            was_wrapped = was_wrapped or cur_was_wrapped
-        return unwrapped_sites, was_wrapped if return_was_wrapped else unwrapped_sites
+            was_wrapped = was_wrapped or not np.allclose(shifted_site, site)
+        unwrapped_sites.insert(ref_i, ref_site)
+        return (unwrapped_sites, was_wrapped) if return_was_wrapped else unwrapped_sites
 
     def shift_site(self, site, shift, return_was_wrapped=False):
         shifted_site = np.array(site) + np.array(shift)
@@ -142,16 +160,34 @@ class Lattice:
         fig, ax = plt.subplots(figsize=(10, 10))
 
         pos = nx.get_node_attributes(self.G, 'pos')
-        edge_colors = [int_to_color(self.G[u][v]['color']) for u, v in self.G.edges()]
-        nx.draw(self.G, pos, ax=ax, with_labels=True, edge_color=edge_colors, width=3, node_size=20, node_color='grey', font_size=8)
 
-        # Draw plaquettes with different colors
+        # plot edges
+        for u, v in self.G.edges():
+            unwrapped_sites, was_wrapped = self.unwrap_periodic([u, v], return_was_wrapped=True)
+            pos1 = self.coords_to_pos(unwrapped_sites[0])
+            pos2 = self.coords_to_pos(unwrapped_sites[1])
+            x = [pos1[0], pos2[0]]
+            y = [pos1[1], pos2[1]]
+            color = int_to_color(self.G[u][v]['color'])
+            ax.plot(x, y, color=color, linewidth=3, zorder=0)
+
+        # plot plaquettes
         for plaquette in self.plaquettes.values():
+            sites = plaquette.sites
             if plaquette.wrapped:
-                continue
-            hexagon = plt.Polygon([pos[v] for v in plaquette.sites], facecolor=plaquette.color_str, alpha=0.5,
-                                  zorder=-1)
+                # continue
+                sites = self.unwrap_periodic(sites)
+            plaquette_pos = [self.coords_to_pos(site) for site in sites]
+            hexagon = plt.Polygon(plaquette_pos, facecolor=plaquette.color_str, alpha=0.5,
+                                  zorder=-10)
             ax.add_patch(hexagon)
+
+        # plot nodes
+        for site in self.G.nodes():
+            pos = self.G.nodes[site]['pos']
+            color = 'grey' if self.G.nodes[site]['boundary'] else 'black'
+            ax.plot(pos[0], pos[1], 'o', color=color, markersize=10, zorder=10)
+
         ax.set_aspect('equal')
 
     def draw_3d(self, zplane=0, ax=None):

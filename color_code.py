@@ -138,7 +138,8 @@ class FloquetCode:
 
     def get_circuit(self, reps=12, reps_without_noise=4, noise_model=None,
                     logical_operator_pauli_type='X', logical_op_directions=('x', 'y'),
-                    detector_indexes=None, detector_args=None, draw=True, return_num_logical_qubits=False):
+                    detector_indexes=None, detector_args=None, draw=True, return_num_logical_qubits=False,
+                    color_bonds_by_delay=True):
         circ = stim.Circuit()
         for site, data in self.lat.G.nodes.items():
             circ.append_operation("QUBIT_COORDS", self.lat.site_to_index.get(site, []), data['pos'])
@@ -148,7 +149,8 @@ class FloquetCode:
         logical_operators = dict()
         for i_logical, logical_operator_direction in enumerate(logical_op_directions):
             logical_pauli, sites_on_logical_path = self.get_logical_operator(logical_operator_direction,
-                                                                             logical_operator_pauli_type, draw=draw)
+                                                                             logical_operator_pauli_type, draw=draw,
+                                                                             color_bonds_by_delay=color_bonds_by_delay)
             logical_operators[logical_operator_direction] = {'logical_pauli': logical_pauli,
                                                              'sites_on_logical_path': sites_on_logical_path,
                                                              'measurements_to_include': set(),
@@ -254,7 +256,7 @@ class FloquetCode:
     def bond_in_path(self, bond, sites_on_path):
         return all([site in sites_on_path for site in bond.sites])
 
-    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False):
+    def get_logical_operator(self, logical_operator_direction, logical_operator_pauli_type, draw=False, color_bonds_by_delay=True):
         sites_on_logical_path = self.lat.get_sites_on_logical_path(logical_operator_direction)
         logical_operator_string = []
         for site in sites_on_logical_path:
@@ -269,7 +271,7 @@ class FloquetCode:
         logical_operator_string = ''.join(logical_operator_string)
         logical_pauli = self.pauli_string_on_sites_to_Pauli(logical_operator_string, sites_on_logical_path)
         if draw:
-            self.draw_pauli(logical_pauli)
+            self.draw_pauli(logical_pauli, color_bonds_by_delay)
         return logical_pauli, sites_on_logical_path
 
     def get_bonds_with_site(self, site):
@@ -297,9 +299,10 @@ class FloquetCode:
         for bond in self.bonds:
             # if the two sites are far apart, the bond is an edge bond should be plotted as if site2 is the shifted site
             sites = copy(bond.sites)
+            sites_unwrapped = self.lat.unwrap_periodic(sites)
             # sites = self.geometry.sites_unwrap_periodic(sites)
-            xs, ys = zip(*[self.lat.G.nodes[site]['pos'] for site in sites])
-            ax.plot(xs, ys, 'k')
+            xs, ys = zip(*[self.lat.coords_to_pos(site) for site in sites_unwrapped])
+            # ax.plot(xs, ys, 'k')
             x = np.mean(xs)
             y = np.mean(ys)
             fontsize = 10
@@ -317,10 +320,10 @@ class FloquetCode:
                 site = self.lat.index_to_site[i]
                 x, y = self.lat.G.nodes[site]['pos']
                 if p == 'I':
-                    ax.plot(x, y, 'ko')
+                    ax.plot(x, y, 'ko', zorder=20)
                 else:
-                    ax.plot(x, y, 'co', markersize=20)
-                    ax.text(x, y, p, fontsize=20, ha='center', va='center')
+                    ax.plot(x, y, 'co', markersize=20, zorder=20)
+                    ax.text(x, y, p, fontsize=20, ha='center', va='center', zorder=30)
         ax.set_aspect('equal')
         if color_bonds_by_delay:
             # shrink the colorbar
@@ -330,7 +333,7 @@ class FloquetCode:
 
 def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
                            logical_op_directions, num_vortexes, lat: Lattice, get_reps_by_graph_dist=False,
-                           detectors=('X','Z'), draw=False, **kwargs):
+                           detectors=('X','Z'), draw=False, color_bonds_by_delay=True, **kwargs):
     rows = []
     detector_indexes = None
     detector_args = None
@@ -338,10 +341,11 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
 
     if get_reps_by_graph_dist:
         circ, _, _ = code.get_circuit(reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
-            noise_model = get_noise_model(noise_type, 0.1),
-            logical_operator_pauli_type=logical_operator_pauli_type,
-            logical_op_directions=logical_op_directions,
-            detector_indexes=detector_indexes, detector_args=detector_args, draw=draw, **kwargs)
+                                      noise_model = get_noise_model(noise_type, 0.1),
+                                      logical_operator_pauli_type=logical_operator_pauli_type,
+                                      logical_op_directions=logical_op_directions,
+                                      detector_indexes=detector_indexes, detector_args=detector_args, draw=draw,
+                                      color_bonds_by_delay=color_bonds_by_delay, **kwargs)
         graph_dist = len(circ.shortest_graphlike_error())
         reps = 3 * graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
         print('graph_dist: ', graph_dist)
