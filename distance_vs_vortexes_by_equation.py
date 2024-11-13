@@ -10,6 +10,18 @@ import stim
 import pandas as pd
 import os
 
+def is_allowed_vortex_numbers(Lx, Ly, vx, vy):
+    condition1 = -vy - (3*Ly - 2)/(2*Lx - 1) * abs(vx) + 2*Ly - 1#-vy - (3*Ly - 2)/(2*Lx - 1) * abs(vx) + 2*Ly - 1
+    condition2 = vy + Ly
+    print(f'condition1={condition1}, condition2={condition2}')
+    return condition1>=0 and condition2>0
+
+def compute_dist(Lx, Ly, vx, vy, logical_direction):
+    if logical_direction == 'y': # error in x direction
+        return 2*Lx + abs(vx)
+    elif logical_direction == 'x': # error in y direction
+        return 2*Ly + np.ceil(3/4 * abs(vy) - 1/4 * vy)
+
 # for logical_op_directions in [('edge_to_hole',), ('around_hole',)]:
 #     if logical_op_directions[0] == 'edge_to_hole':
 #         detectors = ('X',)
@@ -36,21 +48,17 @@ for logical_op_directions in [('y',), ('x',)]:
     reps_without_noise = 1
     draw = False
 
-
-    for N in range(1, 10):
+    for N in range(1, 41):
         for Lx in range(1, N+1):
             if N % Lx != 0:
                 continue
             Ly = N // Lx
             # for Lx in [1,2,3,4]:
             #     for Ly in [1,2,3,4]:
-
             dx = Lx*2
             dy = Ly*3
             vx_list = np.arange(2*Lx)
             vy_list = np.arange(-Ly+1, 2*Ly)
-            # vx_list = [0,1,2,3,4,5]#[2]#[-5,-4,-3,-2,-1,0,1,2,3,4,5]
-            # vy_list = [-5,-4,-3,-2,-1,0,1,2,3,4,5]#[0]#[-5,-4,-3,-2,-1,0,1,2,3,4,5]
             dists = np.zeros((len(vx_list), len(vy_list)))
             dists[:] = np.nan
 
@@ -61,32 +69,9 @@ for logical_op_directions in [('y',), ('x',)]:
                     lat = lattice_type((dx, dy))
 
                     # try:
-                    code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
-                    circ, _, _, num_logicals = code.get_circuit(reps=2+2*reps_without_noise, reps_without_noise=reps_without_noise,
-                        noise_model = get_noise_model(noise_type, 0.1),
-                        logical_operator_pauli_type=logical_operator_pauli_type,
-                        logical_op_directions=logical_op_directions,
-                        detector_indexes=None, detector_args=None, draw=draw, return_num_logical_qubits=True)
-                    # print(idle_qubits(circ, phys_err_rate=0.1, add_depolarization=True, return_idle_time=True))
-                    try:
-                        dist = len(circ.shortest_graphlike_error())
-                        print(f'dist={dist}')
-                        if num_logicals != 2:
-                            continue
-                        dists[i,j] = dist
-                        # save to csv with pandas Lx, Ly, vx, vy, logical_op_directions[0], dist, num_qubits
+                    if is_allowed_vortex_numbers(Lx, Ly, vx, vy):
+                        dist = compute_dist(Lx, Ly, vx, vy, logical_op_directions[0])
                         n_qubits = dx*dy*4
                         df = pd.DataFrame({'Lx': [Lx], 'Ly': [Ly], 'vx': [vx], 'vy': [vy], 'logical_op_direction': logical_op_directions[0], 'dist': [dist], 'n_qubits': [n_qubits]})
                         # add header if file does not exist
-                        df.to_csv('distance_vs_vortices.csv', mode='a', header=not os.path.exists('distance_vs_vortices.csv'), index=False)
-                    except:
-                        print(f'Failed to simulate for dx:{dx},dy:{dy} and num_vortexes={num_vortexes}')
-
-            plt.figure()
-            plt.pcolor(dists.T)
-            plt.xticks(np.arange(len(vx_list))+0.5, vx_list)
-            plt.yticks(np.arange(len(vy_list))+0.5, vy_list)
-            plt.xlabel('vx')
-            plt.ylabel('vy')
-            plt.colorbar()
-            plt.savefig(f'figures/distance_vs_vortexes_lattice_{lattice_type.__name__}_noise_{noise_type}_logical_direction_{logical_op_directions[0]}_Lx{dx}_Ly{dy}.pdf')
+                        df.to_csv('distance_vs_vortices_by_equation.csv', mode='a', header=not os.path.exists('distance_vs_vortices_by_equation.csv'), index=False)

@@ -293,7 +293,7 @@ class FloquetCode:
     def bond_to_full_pauli(self, bond):
         return self.pauli_string_on_sites_to_Pauli(bond.pauli_label, bond.sites)
 
-    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True):
+    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True, show=True, fontsize_measurements=10):
         self.lat.draw()
         ax = plt.gca()
         for bond in self.bonds:
@@ -305,9 +305,8 @@ class FloquetCode:
             # ax.plot(xs, ys, 'k')
             x = np.mean(xs)
             y = np.mean(ys)
-            fontsize = 10
             y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
-            ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center',
+            ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize_measurements, ha='center',
                     va='center')
             if color_bonds_by_delay:
                 # set the color to be the bond.order
@@ -328,7 +327,8 @@ class FloquetCode:
         if color_bonds_by_delay:
             # shrink the colorbar
             plt.colorbar(plt.cm.ScalarMappable(cmap='viridis'), ax=ax, label='Bond delay', shrink=0.3)
-        plt.show()
+        if show:
+            plt.show()
 
 
 def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
