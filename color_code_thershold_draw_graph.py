@@ -39,9 +39,9 @@ df['log_err_rate_both'] = 1 - (1 - df['log_err_rate_x']) * (1 - df['log_err_rate
 
 
 
-
+df['N'] = df['dx'] * df['dy'] * 4
 # Choose which column to use for color and linestyle
-color_column = 'dx'  # This can be 'd' or another column
+color_column = 'N'  # This can be 'd' or another column
 # Create a color map for different code sizes
 unique_d_list = sorted(df[color_column].unique())
 color_map = cm.get_cmap('viridis', len(unique_d_list))
@@ -95,7 +95,39 @@ for logical_operator_direction in ['x', 'y', 'both']:
     edit_graph('Physical Error Rate', 'Logical Error Rate',
                scale=1.5)
 
+
+
+
+
+
+# filter by physical error rate == 0.005
+# plot for each N the minimal logical error rate for "both" logical operator direction labeled by the number of vortexes and dx, dy
+# also plot for each N the minimal logical error rate for "both" with number of vortexes = (0,0) and label by dx, dy
+
+for logical_operator_direction in ['x', 'y', 'both']:
+    df_temp = df.query('phys_err_rate == 0.005')
+    df_temp = df_temp.drop(columns='phys_err_rate')
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+    for N, group in df_temp.groupby('N'):
+        # check if N is a square number
+        # if int(np.sqrt(N/24))**2 != N/24:
+        #     continue
+        minimal_row = group.loc[group['log_err_rate_both'].idxmin()]
+        ax.loglog(minimal_row['N'], minimal_row['log_err_rate_'+logical_operator_direction], 'o', label=f'dx={minimal_row["dx"]}, dy={minimal_row["dy"]}, nv={minimal_row["num_vortexes"]}')
+        minimal_row = group.loc[group['num_vortexes'] == (0,0)]
+        minimal_row = minimal_row.loc[minimal_row['log_err_rate_both'].idxmin()]
+        ax.loglog(minimal_row['N'], minimal_row['log_err_rate_'+logical_operator_direction], 'x', label=f'dx={minimal_row["dx"]}, dy={minimal_row["dy"]}, nv={minimal_row["num_vortexes"]}')
+    # put the legend outside the plot
+    plt.legend(title='dx, dy, nv', bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.xlabel('N')
+    plt.ylabel('Minimal Logical Error Rate')
+    plt.title(f'Logical Operator Direction: {logical_operator_direction}')
+    plt.tight_layout()
 plt.show()
+
+
+
+# plt.show()
     # Show the plot
 # plt.savefig('figures/threshold.pdf')
 
@@ -107,22 +139,36 @@ df['num_vortexes_y'] = df['num_vortexes'].apply(lambda x: x[1])
 df = df.drop(columns='num_vortexes')
 
 # take the maximum system size
-df_temp = df.query(f'dx == {max(df.dx)} and dy == {max(df.dy)}')
+# df_temp = df.query(f'dx == {max(df.dx)} and dy == {max(df.dy)}')
+# df_temp = df.query(f'dx == 4 and dy == 6')
+
+# iterate over all combinations of dx and dy
+for dx, dy in df[['dx', 'dy']].drop_duplicates().values:
+    print(f'dx={dx}, dy={dy}')
+    df_temp = df.query(f'dx == {dx} and dy == {dy}')
+
+    fig, axes = plt.subplots(3, 1, figsize=(5, 12))
 
 # pivot the DataFrame to have the vortex configurations as the index
-for logical_operator_direction in ['x', 'y', 'both']:
+    for logical_operator_direction, ax in zip(['x', 'y', 'both'], axes):
 
-    df = df_temp.pivot(index=['phys_err_rate'], columns=['num_vortexes_x', 'num_vortexes_y'], values='log_err_rate_'+logical_operator_direction)
-    df = df.min()
-    df = df.unstack()
-    x, y = np.meshgrid(df.columns, df.index)
-    z = df.values
-    fig, ax = plt.subplots()
-    c = ax.pcolor(x, y, z, cmap='viridis')
-    plt.colorbar(c, label='logical error rate'+' '+logical_operator_direction)
-    plt.xlabel('Number of Y Vortexes')
-    plt.ylabel('Number of X Vortexes')
-    # set the ticks to the values of the vortexes
-    ax.set_xticks(np.unique(x))
-    ax.set_yticks(np.unique(y))
+        df_temp_direction = df_temp.pivot(index=['phys_err_rate'], columns=['num_vortexes_x', 'num_vortexes_y'], values='log_err_rate_'+logical_operator_direction)
+        df_temp_direction = df_temp_direction.min()
+        df_temp_direction = df_temp_direction.unstack()
+        x, y = df_temp_direction.index, df_temp_direction.columns
+        z = df_temp_direction.values
+        # draw a 2d graph of the minimal logical error rate for each vortex configuration
+
+        # set current axis
+        im = ax.pcolor(x, y, z.T, cmap='viridis')
+        # plt.pcolor(x, y, z.T, cmap='viridis')
+        plt.xlabel('Number of X Vortexes')
+        ax.set_ylabel('Number of Y Vortexes')
+        # set the ticks to the values of the vortexes
+        ax.set_xticks(np.unique(x))
+        ax.set_yticks(np.unique(y))
+        plt.colorbar(im, ax=ax)
+        # move the title up a bit
+        ax.set_title(f'dx={dx}, dy={dy}, logical_operator_direction={logical_operator_direction}', y=1.1)
+    plt.tight_layout()
 plt.show()

@@ -333,7 +333,7 @@ class FloquetCode:
 
 def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
                            logical_op_directions, num_vortexes, lat: Lattice, get_reps_by_graph_dist=False,
-                           detectors=('X','Z'), draw=False, color_bonds_by_delay=True, **kwargs):
+                           detectors=('X','Z'), draw=False, color_bonds_by_delay=True, csv_path='data/threshold.csv', **kwargs):
     rows = []
     detector_indexes = None
     detector_args = None
@@ -364,7 +364,7 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
             logical_op_directions=logical_op_directions,
             detector_indexes=detector_indexes, detector_args=detector_args, draw=False, **kwargs)
 
-        log_err_rate = circ_to_logical_error_rate(circ, shots)
+        log_err_rate, log_err_rate_total = circ_to_logical_error_rate(circ, shots)
         # print(circ)
 
         for i_direction, direction in enumerate(logical_op_directions):
@@ -383,9 +383,27 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
                 'geometry': type(lat).__name__,
                 'detectors': detectors,
             })
+
+        # add the total logical error rate as a row
+        rows.append({
+            'dx': lat.size[0],
+            'dy': lat.size[1],
+            'reps_with_noise': reps - 2 * reps_without_noise,
+            'reps_without_noise': reps_without_noise,
+            'phys_err_rate': phys_err_rate,
+            'log_err_rate': log_err_rate_total,
+            'logical_operator_pauli_type': logical_operator_pauli_type,
+            'logical_operator_direction': 'both',
+            'num_vortexes': num_vortexes,
+            'noise_type': noise_type,
+            'shots': shots,
+            'geometry': type(lat).__name__,
+            'detectors': detectors,
+        })
+
     df = pd.DataFrame(rows)
     # append to the csv file if exists, otherwise create a new file
-    df.to_csv('data/threshold.csv', mode='a', header=not os.path.exists('data/threshold.csv'))
+    df.to_csv(csv_path, mode='a', header=not os.path.exists(csv_path))
 
 
 def circ_to_logical_error_rate(circ, shots):
@@ -395,8 +413,9 @@ def circ_to_logical_error_rate(circ, shots):
     syndrome, actual_observables = sampler.sample(shots=shots, separate_observables=True)
     predicted_observables = matching.decode_batch(syndrome)
     num_errors = np.sum(predicted_observables != actual_observables, axis=0)
-    log_err_rate = num_errors / shots
-    print("logical error_rate", log_err_rate)
-    return log_err_rate
+    log_err_rate_per_operator = num_errors / shots
+    log_err_rate_total = np.sum(predicted_observables != actual_observables) / shots
+    print("logical error_rate", log_err_rate_per_operator, "total error rate", log_err_rate_total)
+    return log_err_rate_per_operator, log_err_rate_total
 
 
