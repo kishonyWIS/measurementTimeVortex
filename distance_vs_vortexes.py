@@ -23,10 +23,10 @@ import os
 
 for logical_op_directions in [('y',), ('x',)]:
     if logical_op_directions[0] == 'x':
-        detectors = ('Z',)
+        detectors = ('Z')
         logical_operator_pauli_type = 'Z'
     elif logical_op_directions[0] == 'y':
-        detectors = ('X',)
+        detectors = ('X')
         logical_operator_pauli_type = 'X'
     else:
         raise ValueError(f'Unknown logical_op_directions: {logical_op_directions}')

@@ -110,6 +110,7 @@ class FloquetCode:
     def location_dependent_delay(self, edge_data):
         if type(self.lat) in [HexagonalLatticeGidneyOnCylinder, HexagonalLatticeGidney]:
             pos = edge_data['pos']
+            # pos = (pos[0], pos[1]-1.5)
             delay = (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
                     pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
         elif 'Sheared' in type(self.lat).__name__:
@@ -334,7 +335,6 @@ class FloquetCode:
 def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_type, logical_operator_pauli_type,
                            logical_op_directions, num_vortexes, lat: Lattice, get_reps_by_graph_dist=False,
                            detectors=('X','Z'), draw=False, color_bonds_by_delay=True, csv_path='data/threshold.csv', **kwargs):
-    rows = []
     detector_indexes = None
     detector_args = None
     code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
@@ -367,6 +367,7 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
         log_err_rate, log_err_rate_total = circ_to_logical_error_rate(circ, shots)
         # print(circ)
 
+        rows = []
         for i_direction, direction in enumerate(logical_op_directions):
             rows.append({
                 'dx': lat.size[0],
@@ -401,9 +402,9 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
             'detectors': detectors,
         })
 
-    df = pd.DataFrame(rows)
-    # append to the csv file if exists, otherwise create a new file
-    df.to_csv(csv_path, mode='a', header=not os.path.exists(csv_path))
+        df = pd.DataFrame(rows)
+        # append to the csv file if exists, otherwise create a new file
+        df.to_csv(csv_path, mode='a', header=not os.path.exists(csv_path))
 
 
 def circ_to_logical_error_rate(circ, shots):
@@ -414,7 +415,7 @@ def circ_to_logical_error_rate(circ, shots):
     predicted_observables = matching.decode_batch(syndrome)
     num_errors = np.sum(predicted_observables != actual_observables, axis=0)
     log_err_rate_per_operator = num_errors / shots
-    log_err_rate_total = np.sum(predicted_observables != actual_observables) / shots
+    log_err_rate_total = np.any(predicted_observables != actual_observables, axis=1).mean()
     print("logical error_rate", log_err_rate_per_operator, "total error rate", log_err_rate_total)
     return log_err_rate_per_operator, log_err_rate_total
 

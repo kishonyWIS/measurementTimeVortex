@@ -33,7 +33,7 @@ def draw_shortest_error(circ: stim.Circuit, draw_graph=False):
 
 
 if __name__ == '__main__':
-    lat = HexagonalLatticeGidney((2,3))
+    lat = HexagonalLatticeGidney((2,9))
     logical_op_directions = ('x',)
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
@@ -51,6 +51,6 @@ if __name__ == '__main__':
                                                 return_num_logical_qubits=True)
 
     print(len(circ.shortest_graphlike_error()))
-    draw_shortest_error(circ, draw_graph=True)
+    draw_shortest_error(circ, draw_graph=False)
     plt.axis('equal')
     plt.show()

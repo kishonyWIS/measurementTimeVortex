@@ -37,6 +37,7 @@ def idle_qubits(circ: stim.Circuit, phys_err_rate: float, add_depolarization: bo
                         qubit_idle_time[q] += 1
                 qubit_depths[q] = op_depth
             new_circ.append_operation(op.name, sub_targets, args)
+    print('depth: ', max(qubit_depths))
     return new_circ, qubit_idle_time if return_idle_time else new_circ
 
 
@@ -51,17 +52,19 @@ if __name__ == '__main__':
     # small MPP example
     circ = stim.Circuit()
     circ.append_operation('MPP', [stim.target_x(0), stim.target_combiner(), stim.target_z(1)])
+    circ.append_operation('MPP', [stim.target_x(1), stim.target_combiner(), stim.target_z(2)])
     circ.append_operation('MPP', [stim.target_x(2), stim.target_combiner(), stim.target_z(3)])
-    circ.append_operation('MPP', [stim.target_x(0), stim.target_combiner(), stim.target_z(2)])
-    circ.append_operation('MPP', [stim.target_x(1), stim.target_combiner(), stim.target_z(3)])
+    circ.append_operation('MPP', [stim.target_x(1), stim.target_combiner(), stim.target_z(2)])
+    circ.append_operation('MPP', [stim.target_x(0), stim.target_combiner(), stim.target_z(1)])
+    # circ.append_operation('MPP', [stim.target_x(1), stim.target_combiner(), stim.target_z(3)])
 
     print(idle_qubits(circ, 0.01, add_depolarization=True, return_idle_time=True))
 
     # test on color code circuit
     lat = HexagonalLatticeGidney((4,6))
-    reps_without_noise = 2
+    reps_without_noise = 5
     reps_with_noise = 0
-    code = FloquetCode(lat, num_vortexes=(0,1), detectors=('X',))
+    code = FloquetCode(lat, num_vortexes=(0,0), detectors=('X',))
     circ, _, _ = code.get_circuit(reps=reps_with_noise+2*reps_without_noise,
                                   reps_without_noise=reps_without_noise,
                                   noise_model = get_noise_model('DEPOLARIZE1', 0.1),
@@ -69,5 +72,13 @@ if __name__ == '__main__':
                                   logical_op_directions=('x','y'),
                                   detector_indexes=None, detector_args=None,
                                   draw=False, return_num_logical_qubits=False)
-    circ = circ.without_noise()
-    print(idle_qubits(circ, 0.01, add_depolarization=True, return_idle_time=True))
+
+    # keep only MPP gates
+    new_circ = stim.Circuit()
+    for op in circ:
+        if op.name == 'MPP':
+            new_circ.append_operation(op.name, op.targets_copy(), op.gate_args_copy())
+    circ = new_circ.without_noise()
+
+    new_circ, qubit_idle_time = idle_qubits(circ, 0.01, add_depolarization=True, return_idle_time=True)
+    print(qubit_idle_time)
