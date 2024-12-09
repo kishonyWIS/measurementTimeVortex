@@ -64,7 +64,7 @@ if __name__ == '__main__':
     lat = HexagonalLatticeGidney((4,6))
     reps_without_noise = 5
     reps_with_noise = 0
-    code = FloquetCode(lat, num_vortexes=(0,0), detectors=('X',))
+    code = FloquetCode(lat, num_vortexes=(1,0), detectors=('X',))
     circ, _, _ = code.get_circuit(reps=reps_with_noise+2*reps_without_noise,
                                   reps_without_noise=reps_without_noise,
                                   noise_model = get_noise_model('DEPOLARIZE1', 0.1),

@@ -33,8 +33,8 @@ def draw_shortest_error(circ: stim.Circuit, draw_graph=False):
 
 
 if __name__ == '__main__':
-    lat = HexagonalLatticeGidney((2,9))
-    logical_op_directions = ('x',)
+    lat = HexagonalLatticeSheared((6,3))
+    logical_op_directions = ('y',)
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
     num_vortexes = (0, 0)  # (0,1)

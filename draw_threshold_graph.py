@@ -3,7 +3,7 @@ from itertools import cycle
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.pyplot import title
-
+from matplotlib.lines import Line2D
 from plot_utils import *
 
 def parse_tuple(value):
@@ -79,26 +79,44 @@ scale=1.8
 
 # plot the logical error rate vs the physical error rate for each system size. Use full lines for no vortexes and dashed lines for 2L-1 vortexes.
 plt.figure()
-for df, linestyle in zip([df_without_vortexes, df_with_vortexes], ['-', '--']):
-    # reset colors
+# Initialize lists to track legend elements for line styles and colors
+line_style_elements = []
+line_style_elements.append(Line2D([], [], color='black', linestyle='-', label='$(0,0)$'))
+line_style_elements.append(Line2D([], [], color='black', linestyle=':', label='$(0,2L-1)$'))
+color_elements = []
+
+# First loop: plot the data
+for df, linestyle in zip([df_without_vortexes, df_with_vortexes], ['-', ':']):
+    # Reset colors
     plt.gca().set_prop_cycle(None)
+    color_cycle = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
     # Group by the chosen columns and plot each group
     for name, group in df.groupby('dx'):
-        label = str(int(name/2))+', '+str((0,0)) if linestyle == '-' else str(int(name/2))+', '+str((0,2*int(name/2)-1))
-        if label:
-            plt.loglog(group['phys_err_rate'], group['log_err_rate_both'], label=label, linestyle=linestyle, marker='o')
-        else:
-            plt.loglog(group['phys_err_rate'], group['log_err_rate_both'], linestyle=linestyle, marker='o')
+        color_label = f"{int(name / 2)}" if linestyle == '-' else None
+        color = next(color_cycle)
+        plt.loglog(group['phys_err_rate'], group['log_err_rate_both'], label=color_label, color=color, linestyle=linestyle, marker='o')
 
+        # Add color elements for each L
+        if color_label is not None:
+            color_elements.append(Line2D([], [], color=color, marker='o', label=color_label))
 
-plt.legend(title='$L, (n_x,n_y)$', fontsize=6*scale, title_fontsize=8*scale, ncols=2)
+# Create the first legend (for line styles)
+legend1 = plt.legend(handles=line_style_elements, title='$(n_x,n_y)$', fontsize=6 * scale, title_fontsize=8 * scale, loc='upper left')
+
+# Add the first legend to the axes
+plt.gca().add_artist(legend1)
+
+# Create the second legend (for colors)
+plt.legend(handles=color_elements, title='L', fontsize=6 * scale, title_fontsize=8 * scale, loc='lower right')
+
 
 
 
 edit_graph('Physical error rate', 'Logical error rate', scale=scale)
 
-plt.savefig('figures/threshold_graph.pdf')
+plt.savefig('figures/threshold_graph_both.pdf')
 
 
 
 plt.show()
+
