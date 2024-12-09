@@ -113,10 +113,15 @@ class FloquetCode:
             # pos = (pos[0], pos[1]-1.5)
             delay = (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
                     pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
-        elif 'Sheared' in type(self.lat).__name__:
+        elif 'Sheared' in type(self.lat).__name__ and 'New' not in type(self.lat).__name__:
             coords = edge_data['coords']
             delay =  (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
                       coords[1] / self.lat.size[1] * self.num_vortexes[1])
+        elif type(self.lat) is HexagonalLatticeShearedNew:
+            pos = edge_data['pos']
+            pos_lattice = self.position_cartesian_to_lattice_vectors(pos)
+            delay = (pos_lattice[0] / self.lat.size[0] * self.num_vortexes[0] +
+                        pos_lattice[1] / self.lat.size[1] * self.num_vortexes[1])
         elif type(self.lat) is HexagonalLatticeGidneyOnPlaneWithHole:
             pos = edge_data['pos']
             hole_coords = (self.lat.size[0]//2, self.lat.size[1]//2, 0)
@@ -129,6 +134,9 @@ class FloquetCode:
         else:
             raise ValueError(f'Cant add vortex to lattice type {type(self.lat).__name__}')
         return delay%1
+
+    def position_cartesian_to_lattice_vectors(self, pos):
+        return np.linalg.solve(np.array(self.lat.lattice_vectors).T, pos)
 
     def get_bond_order(self, edge_data, pauli_label):
         color = edge_data['color']

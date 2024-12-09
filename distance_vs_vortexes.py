@@ -1,6 +1,4 @@
 import numpy as np
-from qiskit.pulse import num_qubits
-
 from color_code import FloquetCode
 from lattice import *
 from noise import get_noise_model
@@ -32,23 +30,22 @@ for logical_op_directions in [('y',), ('x',)]:
         raise ValueError(f'Unknown logical_op_directions: {logical_op_directions}')
 
     noise_type = 'EM3_v2'
-    lattice_type = HexagonalLatticeGidney
+    lattice_type = HexagonalLatticeShearedNew
     reps_without_noise = 1
     draw = False
 
-
-    for N in range(1, 10):
-        for Lx in range(1, N+1):
+    for N in [2*2]:#range(1, 10):
+        for Lx in range(2, N):
             if N % Lx != 0:
                 continue
             Ly = N // Lx
             # for Lx in [1,2,3,4]:
             #     for Ly in [1,2,3,4]:
 
-            dx = Lx*2
-            dy = Ly*3
-            vx_list = np.arange(2*Lx)
-            vy_list = np.arange(-Ly+1, 2*Ly)
+            dx = Lx
+            dy = Ly
+            vx_list = np.arange(-(Lx//3)-1, Lx//3+2)
+            vy_list = np.arange(-(Ly//3)-1, Ly//3+2)
             # vx_list = [0,1,2,3,4,5]#[2]#[-5,-4,-3,-2,-1,0,1,2,3,4,5]
             # vy_list = [-5,-4,-3,-2,-1,0,1,2,3,4,5]#[0]#[-5,-4,-3,-2,-1,0,1,2,3,4,5]
             dists = np.zeros((len(vx_list), len(vy_list)))
@@ -66,7 +63,7 @@ for logical_op_directions in [('y',), ('x',)]:
                         noise_model = get_noise_model(noise_type, 0.1),
                         logical_operator_pauli_type=logical_operator_pauli_type,
                         logical_op_directions=logical_op_directions,
-                        detector_indexes=None, detector_args=None, draw=draw, return_num_logical_qubits=True)
+                        detector_indexes=None, detector_args=None, draw=draw, return_num_logical_qubits=True, color_bonds_by_delay=True)
                     # print(idle_qubits(circ, phys_err_rate=0.1, add_depolarization=True, return_idle_time=True))
                     try:
                         dist = len(circ.shortest_graphlike_error())
@@ -75,10 +72,11 @@ for logical_op_directions in [('y',), ('x',)]:
                             continue
                         dists[i,j] = dist
                         # save to csv with pandas Lx, Ly, vx, vy, logical_op_directions[0], dist, num_qubits
-                        n_qubits = dx*dy*4
+                        n_qubits = dx*dy*6
                         df = pd.DataFrame({'Lx': [Lx], 'Ly': [Ly], 'vx': [vx], 'vy': [vy], 'logical_op_direction': logical_op_directions[0], 'dist': [dist], 'n_qubits': [n_qubits]})
                         # add header if file does not exist
-                        df.to_csv('distance_vs_vortices.csv', mode='a', header=not os.path.exists('distance_vs_vortices.csv'), index=False)
+                        filename = f'distance_vs_vortices_lattice_{lattice_type.__name__}.csv'
+                        df.to_csv(filename, mode='a', header=not os.path.exists(filename), index=False)
                     except:
                         print(f'Failed to simulate for dx:{dx},dy:{dy} and num_vortexes={num_vortexes}')
 

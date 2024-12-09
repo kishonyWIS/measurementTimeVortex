@@ -33,7 +33,7 @@ def draw_shortest_error(circ: stim.Circuit, draw_graph=False):
 
 
 if __name__ == '__main__':
-    lat = HexagonalLatticeSheared((6,3))
+    lat = HexagonalLatticeShearedNew((2,2))
     logical_op_directions = ('y',)
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
@@ -47,7 +47,7 @@ if __name__ == '__main__':
                                                 noise_model=get_noise_model(noise_type, 0.1),
                                                 logical_operator_pauli_type=logical_operator_pauli_type,
                                                 logical_op_directions=logical_op_directions,
-                                                detector_indexes=None, detector_args=None, draw=False,
+                                                detector_indexes=None, detector_args=None, draw=True,
                                                 return_num_logical_qubits=True)
 
     print(len(circ.shortest_graphlike_error()))

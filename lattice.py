@@ -258,6 +258,30 @@ class HexagonalLatticeSheared(Lattice):
         plaquette_shifts = [((0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0))]
         super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
 
+class HexagonalLatticeShearedNew(Lattice):
+    def __init__(self, size):
+        lattice_vectors = [(3, 0), (1.5, 3/2*np.sqrt(3))]
+        sublat_offsets = [(0, 0), (1, 0), (1.5, np.sqrt(3)/2), (2.5, np.sqrt(3)/2), (3, np.sqrt(3)), (4, np.sqrt(3))]
+        edges_shifts = [((0,0,0),(0,0,1)), ((0,0,2),(0,0,3)), ((0,0,4),(0,0,5)),
+                        ((0,0,1),(0,0,2)), ((0,0,3),(0,0,4)), ((0,0,5),(1,1,0)),
+                        ((1,0,0),(0,0,3)), ((1,0,2),(0,0,5)), ((0,0,4),(0,1,1))]
+        plaquette_shifts = [((0,0,3), (0,0,4), (0,0,5), (1,0,2), (1,0,1), (1,0,0)),
+                            ((0,0,4), (0,0,5), (1,1,0), (0,1,3), (0,1,2), (0,1,1)),
+                            ((0,0,5), (1,1,0), (1,1,1), (1,0,4), (1,0,3), (1,0,2)),
+                            ]
+        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
+
+    def get_sites_on_logical_path(self, direction:str='x'):
+        if direction == 'x':
+            return [(ix, 1, s) for ix in range(self.size[0]) for s in [0,1,2,3]]
+        elif direction == 'y':
+            return [(1, iy, s) for iy in range(self.size[1]) for s in [1,2,3,4]]
+        else:
+            raise ValueError(f"Invalid direction {direction}")
+
+    def plaq_coords_to_color(self, coords):
+        return (coords[2]) % 3
+
 class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
     def __init__(self, size):
         super().__init__(size)
