@@ -30,24 +30,27 @@ for logical_op_directions in [('y',), ('x',)]:
         raise ValueError(f'Unknown logical_op_directions: {logical_op_directions}')
 
     noise_type = 'EM3_v2'
-    lattice_type = HexagonalLatticeShearedNew
+    lattice_type = HexagonalLatticeShearedNew#HexagonalLatticeGidney#
     reps_without_noise = 1
     draw = False
 
-    for N in [2*2]:#range(1, 10):
-        for Lx in range(2, N):
+    L_list = [3]
+    for L in L_list:#range(1, 10):
+        N = L**2
+        for Lx in [L]:#range(2, N):
             if N % Lx != 0:
                 continue
             Ly = N // Lx
-            # for Lx in [1,2,3,4]:
-            #     for Ly in [1,2,3,4]:
 
             dx = Lx
             dy = Ly
-            vx_list = np.arange(-(Lx//3)-1, Lx//3+2)
-            vy_list = np.arange(-(Ly//3)-1, Ly//3+2)
-            # vx_list = [0,1,2,3,4,5]#[2]#[-5,-4,-3,-2,-1,0,1,2,3,4,5]
-            # vy_list = [-5,-4,-3,-2,-1,0,1,2,3,4,5]#[0]#[-5,-4,-3,-2,-1,0,1,2,3,4,5]
+            vx_list = np.arange(-Lx+1, Lx)
+            vy_list = np.arange(-Ly+1, Ly)
+            # dx = 2 * Lx
+            # dy = 3 * Ly
+            # vx_list = np.arange(2 * Lx + 2)
+            # vy_list = np.arange(-Ly + 1 - 2, 2 * Ly + 2)
+
             dists = np.zeros((len(vx_list), len(vy_list)))
             dists[:] = np.nan
 
@@ -72,7 +75,7 @@ for logical_op_directions in [('y',), ('x',)]:
                             continue
                         dists[i,j] = dist
                         # save to csv with pandas Lx, Ly, vx, vy, logical_op_directions[0], dist, num_qubits
-                        n_qubits = dx*dy*6
+                        n_qubits = dx*dy*6#4
                         df = pd.DataFrame({'Lx': [Lx], 'Ly': [Ly], 'vx': [vx], 'vy': [vy], 'logical_op_direction': logical_op_directions[0], 'dist': [dist], 'n_qubits': [n_qubits]})
                         # add header if file does not exist
                         filename = f'distance_vs_vortices_lattice_{lattice_type.__name__}.csv'

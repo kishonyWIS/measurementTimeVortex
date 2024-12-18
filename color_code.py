@@ -108,16 +108,17 @@ class FloquetCode:
         return self.num_data_qubits + 1
 
     def location_dependent_delay(self, edge_data):
-        if type(self.lat) in [HexagonalLatticeGidneyOnCylinder, HexagonalLatticeGidney]:
-            pos = edge_data['pos']
-            # pos = (pos[0], pos[1]-1.5)
-            delay = (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
-                    pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
-        elif 'Sheared' in type(self.lat).__name__ and 'New' not in type(self.lat).__name__:
-            coords = edge_data['coords']
-            delay =  (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
-                      coords[1] / self.lat.size[1] * self.num_vortexes[1])
-        elif type(self.lat) is HexagonalLatticeShearedNew:
+        # if type(self.lat) in [HexagonalLatticeGidneyOnCylinder, HexagonalLatticeGidney]:
+        #     pos = edge_data['pos']
+        #     # pos = (pos[0], pos[1]-1.5)
+        #     delay = (pos[0]/np.linalg.norm(self.lat.lattice_vectors[0]) / self.lat.size[0] * self.num_vortexes[0] +
+        #             pos[1]/np.linalg.norm(self.lat.lattice_vectors[1]) / self.lat.size[1] * self.num_vortexes[1])
+        # elif 'Sheared' in type(self.lat).__name__ and 'New' not in type(self.lat).__name__:
+        #     coords = edge_data['coords']
+        #     delay =  (coords[0] / self.lat.size[0] * self.num_vortexes[0] +
+        #               coords[1] / self.lat.size[1] * self.num_vortexes[1])
+        # elif type(self.lat) is HexagonalLatticeShearedNew:
+        if 'Sheared' in type(self.lat).__name__ or type(self.lat) is HexagonalLatticeGidney:
             pos = edge_data['pos']
             pos_lattice = self.position_cartesian_to_lattice_vectors(pos)
             delay = (pos_lattice[0] / self.lat.size[0] * self.num_vortexes[0] +
@@ -302,9 +303,10 @@ class FloquetCode:
     def bond_to_full_pauli(self, bond):
         return self.pauli_string_on_sites_to_Pauli(bond.pauli_label, bond.sites)
 
-    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True, show=True, fontsize_measurements=10):
+    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True, show=True, fontsize_measurements=10, ax=None):
         self.lat.draw()
-        ax = plt.gca()
+        if ax is None:
+            ax = plt.gca()
         for bond in self.bonds:
             # if the two sites are far apart, the bond is an edge bond should be plotted as if site2 is the shifted site
             sites = copy(bond.sites)

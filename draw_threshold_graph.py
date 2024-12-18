@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.pyplot import title
 from matplotlib.lines import Line2D
+
 from plot_utils import *
 
 def parse_tuple(value):
@@ -41,6 +42,8 @@ for df, linestyle in zip([df_without_vortexes, df_with_vortexes], ['-', '--']):
         # filter out the infinities
         x = x[np.isfinite(y)]
         y = y[np.isfinite(y)]
+        print(x)
+        print(y)
         m, b = np.polyfit(x[-2:], y[-2:], 1)
         plt.semilogy(x, np.exp(m*x+b), linestyle=linestyle, color=color)
         df_fits = pd.concat([df_fits, pd.DataFrame({'vortexes': linestyle, 'phys_err_rate': [name], 'm': [m], 'b': [b]})])
@@ -115,6 +118,33 @@ plt.legend(handles=color_elements, title='L', fontsize=6 * scale, title_fontsize
 edit_graph('Physical error rate', 'Logical error rate', scale=scale)
 
 plt.savefig('figures/threshold_graph_both.pdf')
+
+
+
+
+# plot the logical error rate vs the physical error rate for each system size. Draw all vortex configurations in the same plot.
+# set the marker to be the number of vortexes in the x direction
+# set the linestyle to be the number of vortexes in the y direction
+# set the color to be the system size
+
+plt.figure()
+# reset colors
+plt.gca().set_prop_cycle(None)
+color_cycle = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
+# reset markers cycle
+plt.gca().set_prop_cycle(None)
+markers = list(Line2D.filled_markers)
+# reset linestyles cycle
+linestyles = ['-', '--', ':', '-.']*10
+# Group by the chosen columns and plot each group
+for name_dx, group_dx in df_both.groupby('dx'):
+    color = next(color_cycle)
+    for name_vortexes, group_vortexes in group_dx.groupby('num_vortexes'):
+        marker = markers[int(name_vortexes[0])]
+        linestyle = linestyles[int(name_vortexes[1])]
+        plt.loglog(group_vortexes['phys_err_rate'], group_vortexes['log_err_rate_both'], label=f'L={name_dx}, {name_vortexes}', linestyle=linestyle, marker=marker, color=color)
+
+
 
 
 

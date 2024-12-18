@@ -20,7 +20,7 @@ df = df.drop(columns=['Unnamed: 0'])
 df = df.drop(columns=['detectors', 'logical_operator_pauli_type', 'reps_with_noise'])
 
 # filter a single system size
-L = 3
+L = 4
 df = df.query(f'dx == {2*L} and dy == {3*L}')
 # for each vortex configuration, draw the logical error rate as a function of the physical error rate
 # Create a new plot
@@ -32,8 +32,8 @@ for logical_operator_direction in ['x', 'y', 'both']:
     # reset markers cycle
     plt.gca().set_prop_cycle(None)
     marker_cycle = list(Line2D.filled_markers)
-    vx_list = list(np.arange(2 * L))
-    vy_list = list(np.arange(-L + 1, 2 * L))
+    vx_list = list(np.arange(min(df['num_vortexes'].apply(lambda x: x[0])), max(df['num_vortexes'].apply(lambda x: x[0])) + 1))
+    vy_list = list(np.arange(min(df['num_vortexes'].apply(lambda x: x[1])), max(df['num_vortexes'].apply(lambda x: x[1])) + 1))
     slopes = np.nan * np.zeros((len(vx_list), len(vy_list)))
     interceps = np.nan * np.zeros((len(vx_list), len(vy_list)))
     # Group by the chosen columns and plot each group

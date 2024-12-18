@@ -156,8 +156,9 @@ class Lattice:
         else:
             raise ValueError(f"Invalid direction {direction}")
 
-    def draw(self):
-        fig, ax = plt.subplots(figsize=(10, 10))
+    def draw(self, ax=None):
+        if ax is None:
+            fig, ax = plt.subplots(figsize=(10, 10))
 
         pos = nx.get_node_attributes(self.G, 'pos')
 
