@@ -28,16 +28,16 @@ class Plaquette:
 
 
 class Lattice:
-    def __init__(self, size,
-                 lattice_vectors:list[tuple], sublat_offsets:list[np.ndarray[2]],
+    def __init__(self, lattice_vectors:list[tuple], coords_to_pos:callable, sublat_offsets:list[np.ndarray[2]],
                  edges_shifts: list[tuple[tuple[int,int,int],tuple[int,int,int]]],
                  plaquette_shifts: list[tuple[tuple[int,int,int], ...]]):
         self.lattice_vectors = list(map(np.array, lattice_vectors))
         self.sublat_offsets = sublat_offsets
+        self.coords_to_pos = coords_to_pos
         self.edges_shifts = edges_shifts
         self.plaquette_shifts = plaquette_shifts
+        self.all_coords_i_j = self.get_all_coords_i_j()
         self.plaquettes = {}
-        self.size = size
         self.G = nx.Graph()
         self.index_to_site = {}  # Mapping from index to site
         self.site_to_index = {}  # Mapping from site to index
@@ -48,15 +48,15 @@ class Lattice:
     def shift_site1_near_site2(self, site1, site2):
         # shift site1 by a multiple of the lattice vectors to be close to site2 in terms of position
         min_dist = np.inf
+        lattice_vectors_with_sublat = [np.array((vec[0], vec[1], 0)) for vec in self.lattice_vectors]
         for i in range(-1, 2):
             for j in range(-1, 2):
-                shifted_site = np.array(site1) + i * np.array([self.size[0], 0, 0]) + j * np.array([0, self.size[1], 0])
+                shifted_site = np.array(site1) + i * lattice_vectors_with_sublat[0] + j * lattice_vectors_with_sublat[1]
                 dist = np.linalg.norm(np.array(self.coords_to_pos(shifted_site)) - np.array(self.coords_to_pos(site2)))
                 if dist < min_dist:
                     min_dist = dist
-                    best_shift = (i, j)
-        shifted_site = np.array(site1) + best_shift[0] * np.array([self.size[0], 0, 0]) + best_shift[1] * np.array([0, self.size[1], 0])
-        return shifted_site
+                    best_shifted_site = shifted_site
+        return best_shifted_site
 
     def unwrap_periodic(self, sites, return_was_wrapped=False):
         was_wrapped = False
@@ -72,23 +72,39 @@ class Lattice:
         unwrapped_sites.insert(ref_i, ref_site)
         return (unwrapped_sites, was_wrapped) if return_was_wrapped else unwrapped_sites
 
+    def wrap_periodic(self, site):
+        # shift sites by integer multiples of the lattice vectors to be within the unit cell
+        lattice_matrix = np.column_stack(self.lattice_vectors)
+        coords = np.linalg.solve(lattice_matrix, site[:2])
+        coords_mod = coords - np.floor(coords)
+        site_i_j = lattice_matrix @ coords_mod
+        return (int(site_i_j[0]), int(site_i_j[1]), site[2])
+
     def shift_site(self, site, shift, return_was_wrapped=False):
         shifted_site = np.array(site) + np.array(shift)
-        shifted_site_mod_size = tuple(shifted_site % np.array([self.size[0], self.size[1], len(self.sublat_offsets)]))
+        shifted_site_mod_size = self.wrap_periodic(shifted_site)
         was_wrapped = not np.allclose(shifted_site_mod_size, shifted_site)
         return shifted_site_mod_size, was_wrapped if return_was_wrapped else shifted_site_mod_size
 
-    def coords_to_pos(self, coords):
-        return tuple(np.sum([coord * vec for coord,vec in zip(coords[:-1],self.lattice_vectors)], axis=0) +
-                     np.array(self.sublat_offsets[coords[2]]))
+    def get_all_coords_i_j(self):
+        # generate all possible coordinates using lattice vectors
+        # first generate all integer points within a rectangle defined by the corners of the lattice vectors
+        min_x = min(0, self.lattice_vectors[0][0], self.lattice_vectors[1][0], self.lattice_vectors[0][0] + self.lattice_vectors[1][0])
+        max_x = max(0, self.lattice_vectors[0][0], self.lattice_vectors[1][0], self.lattice_vectors[0][0] + self.lattice_vectors[1][0])
+        min_y = min(0, self.lattice_vectors[0][1], self.lattice_vectors[1][1], self.lattice_vectors[0][1] + self.lattice_vectors[1][1])
+        max_y = max(0, self.lattice_vectors[0][1], self.lattice_vectors[1][1], self.lattice_vectors[0][1] + self.lattice_vectors[1][1])
+        all_coords = [(x, y) for x in range(min_x, max_x + 1) for y in range(min_y, max_y + 1)]
+        # filter out points outside the parallelogram defined by the lattice vectors using wrap_periodic
+        all_coords = [site for site in all_coords if np.allclose(self.wrap_periodic((site[0],site[1],0)), (site[0],site[1],0))]
+        return all_coords
 
     def create_graph(self):
-        for row, col in np.ndindex(self.size):
+        for row, col in self.all_coords_i_j:
             for sublat in range(len(self.sublat_offsets)):
                 site1 = (row, col, sublat)
                 self.G.add_node(site1, pos=tuple(self.coords_to_pos(site1)), boundary=False)
 
-        for row, col in np.ndindex(self.size):
+        for row, col in self.all_coords_i_j:
             reference_site = (row, col, 0)
             for shifts in self.edges_shifts:
                 site1, was_wrapped = self.shift_site(reference_site, shifts[0], return_was_wrapped=True)
@@ -102,22 +118,22 @@ class Lattice:
     def create_plaquettes_and_colors(self):
         for i_plaq, shifts in enumerate(self.plaquette_shifts):
             mean_pos_of_shifts = np.mean([np.array(self.coords_to_pos(shift)) for shift in shifts], axis=0)
-            for row, col in np.ndindex(self.size):
+            for row, col in self.all_coords_i_j:
                 reference_site = (row, col, 0)
                 sites_and_wrapped = [self.shift_site(reference_site, shift, return_was_wrapped=True) for shift in shifts]
                 sites = list(map(lambda x: x[0], sites_and_wrapped))
                 coords = (row, col, i_plaq)
                 self.plaquettes[coords] = Plaquette(sites=sites,
-                                                        edges=[(sites[i], sites[(i + 1) % len(sites)]) for i in range(len(sites))],
-                                                        color=self.plaq_coords_to_color(coords),
-                                                        wrapped=any(wrapped for site, wrapped in sites_and_wrapped),
-                                                        pos=tuple(np.array(self.G.nodes[reference_site]["pos"]) +
-                                                                  mean_pos_of_shifts))
+                                                    edges=[(sites[i], sites[(i + 1) % len(sites)]) for i in range(len(sites))],
+                                                    color=self.plaq_coords_to_color(coords),
+                                                    wrapped=any(wrapped for site, wrapped in sites_and_wrapped),
+                                                    pos=tuple(np.array(self.G.nodes[reference_site]["pos"]) +
+                                                              mean_pos_of_shifts))
                 for edge in self.plaquettes[coords].edges:
                     self.G.edges[edge]["color"] = (self.G.edges[edge]["color"] - self.plaquettes[coords].color) % 3
 
     def plaq_coords_to_color(self, coords):
-        return (coords[0] - coords[1]) % 3
+        return (-coords[0] + coords[1]) % 3
 
     def assign_indices(self):
         # Assign unique indices to nodes not on boundary
@@ -150,17 +166,34 @@ class Lattice:
 
     def get_sites_on_logical_path(self, direction:str='x'):
         if direction == 'x':
-            return [(ix, 2, s) for ix in range(self.size[0]) for s in range(len(self.sublat_offsets))]
+            # sites along a path from (0,0,0) to (L1[0],L1[1],0)
+            sites = []
+            for i in range(self.lattice_vectors[0][0]):
+                for sublat in range(len(self.sublat_offsets)):
+                    site = (i, 0, sublat)
+                    sites.append(site)
+            for i in range(self.lattice_vectors[0][1]):
+                for sublat in range(len(self.sublat_offsets)):
+                    site = (self.lattice_vectors[0][0], i, sublat)
+                    sites.append(site)
         elif direction == 'y':
-            return [(2, iy, s) for iy in range(self.size[1]) for s in range(len(self.sublat_offsets))]
+            # sites along a path from (0,0,0) to (L2[0],L2[1],0)
+            sites = []
+            for i in range(self.lattice_vectors[1][0]):
+                for sublat in range(len(self.sublat_offsets)):
+                    site = (i, 0, sublat)
+                    sites.append(site)
+            for i in range(self.lattice_vectors[1][1]):
+                for sublat in range(len(self.sublat_offsets)):
+                    site = (self.lattice_vectors[1][0], i, sublat)
+                    sites.append(site)
         else:
             raise ValueError(f"Invalid direction {direction}")
+        return sites
 
     def draw(self, ax=None):
         if ax is None:
             fig, ax = plt.subplots(figsize=(10, 10))
-
-        pos = nx.get_node_attributes(self.G, 'pos')
 
         # plot edges
         for u, v in self.G.edges():
@@ -214,126 +247,18 @@ class Lattice:
         plt.show()
 
 
-    # if ax is None:
-    #     fig = plt.figure(figsize=(12, 8))
-    #     ax = fig.add_subplot(111, projection='3d')
-    #
-    # # Draw plaquettes as shaded polygons
-    # for plaquette in code.plaquettes:
-    #     if plaquette.pauli_label == 'Z':
-    #         continue
-    #     sites, was_shifted = code.geometry.sites_unwrap_periodic(plaquette.sites, return_was_shifted=True)
-    #     if was_shifted:
-    #         continue
-    #     points = list(map(code.geometry.site_to_physical_location, sites))
-    #     points_3d = [(x, y, z_plane) for x, y in points]  # Add constant z-plane
-    #     color = code.geometry.get_plaquette_color(plaquette.coords)
-    #
-    #     # Create a 3D polygon
-    #     polygon = Poly3DCollection([points_3d], color=color, alpha=0.2)
-    #     ax.add_collection3d(polygon)
-    #
-    # # Draw bonds
-    # for bond in code.bonds:
-    #     sites = copy(bond.sites)
-    #     sites = code.geometry.sites_unwrap_periodic(sites)
-    #     points = [code.geometry.site_to_physical_location(site) for site in sites]
-    #     xs, ys = zip(*points)
-    #     zs = [z_plane] * len(xs)  # Set z to the constant plane
-    #     ax.plot(xs, ys, zs, 'k')
-    #
-    #     # Add bond label
-    #     x = np.mean(xs)
-    #     y = np.mean(ys)
-    #     z = z_plane
-    #     fontsize = 10
-    #     y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
-    #     # ax.text(x, y, z, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize, ha='center', va='center')
-
-
-class HexagonalLatticeSheared(Lattice):
-    def __init__(self, size):
-        lattice_vectors = [(np.sqrt(3), 0), (np.sqrt(3) / 2, 1.5)]
-        sublat_offsets = [(0, 0), (np.sqrt(3) / 2, 1 / 2 )]
+class HexagonalLattice(Lattice):
+    def __init__(self, L1, L2):
+        lattice_vectors = [L1, L2]
+        sublat_offsets = [(0, 0), (1, 0)]
         edges_shifts = [((0,0,1), (0,0,0)), ((0,0,1), (1,0,0)), ((0,0,1),(0,1,0))]
         plaquette_shifts = [((0,0,1), (1,0,0), (1,0,1), (1,1,0), (0,1,1), (0,1,0))]
-        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
+        i_to_pos = (1.5, -np.sqrt(3)/2)
+        j_to_pos = (1.5, np.sqrt(3)/2)
+        coords_to_pos = lambda site: (site[0] * i_to_pos[0] + site[1] * j_to_pos[0] + sublat_offsets[site[2]][0],
+                                      site[0] * i_to_pos[1] + site[1] * j_to_pos[1] + sublat_offsets[site[2]][1])
+        super().__init__(lattice_vectors, coords_to_pos, sublat_offsets, edges_shifts, plaquette_shifts)
 
-class HexagonalLatticeShearedNew(Lattice):
-    def __init__(self, size):
-        lattice_vectors = [(3, 0), (1.5, 3/2*np.sqrt(3))]
-        sublat_offsets = [(0, 0), (1, 0), (1.5, np.sqrt(3)/2), (2.5, np.sqrt(3)/2), (3, np.sqrt(3)), (4, np.sqrt(3))]
-        edges_shifts = [((0,0,0),(0,0,1)), ((0,0,2),(0,0,3)), ((0,0,4),(0,0,5)),
-                        ((0,0,1),(0,0,2)), ((0,0,3),(0,0,4)), ((0,0,5),(1,1,0)),
-                        ((1,0,0),(0,0,3)), ((1,0,2),(0,0,5)), ((0,0,4),(0,1,1))]
-        plaquette_shifts = [((0,0,3), (0,0,4), (0,0,5), (1,0,2), (1,0,1), (1,0,0)),
-                            ((0,0,4), (0,0,5), (1,1,0), (0,1,3), (0,1,2), (0,1,1)),
-                            ((0,0,5), (1,1,0), (1,1,1), (1,0,4), (1,0,3), (1,0,2)),
-                            ]
-        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
-
-    def get_sites_on_logical_path(self, direction:str='x'):
-        if direction == 'x':
-            return [(ix, 1, s) for ix in range(self.size[0]) for s in [0,1,2,3]]
-        elif direction == 'y':
-            return [(1, iy, s) for iy in range(self.size[1]) for s in [1,2,3,4]]
-        else:
-            raise ValueError(f"Invalid direction {direction}")
-
-    def plaq_coords_to_color(self, coords):
-        return (coords[2]) % 3
-
-class HexagonalLatticeShearedOnCylinder(HexagonalLatticeSheared):
-    def __init__(self, size):
-        super().__init__(size)
-        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in (0, 1)], 'X')
-
-class HexagonalLatticeGidney(Lattice):
-    def __init__(self, size):
-        lattice_vectors = [(2,0), (0,2)]
-        sublat_offsets = [(0,0), (0,1), (1,0), (1,1)]
-        edges_shifts = [((0,0,0), (0,0,1)), ((0,0,2), (0,0,3)), ((0,0,1),(0,0,3)),
-                        ((0,0,1), (0,1,0)), ((0,0,3), (0,1,2)), ((0,0,2), (1,0,0))]
-        plaquette_shifts = [((0,0,1), (0,0,3), (0,1,2), (0,1,3), (0,1,1), (0,1,0)),
-                            ((0,0,2), (0,0,3), (0,1,2), (1,1,0), (1,0,1), (1,0,0))]
-        super().__init__(size, lattice_vectors, sublat_offsets, edges_shifts, plaquette_shifts)
-
-    def get_sites_on_logical_path(self, direction:str='x'):
-        if direction == 'x':
-            return [(ix, 1, s) for ix in range(self.size[0]) for s in [0,1,3,2]]
-        elif direction == 'y':
-            return [(1, iy, s) for iy in range(self.size[1]) for s in [0,1]]
-        else:
-            raise ValueError(f"Invalid direction {direction}")
-
-    def plaq_coords_to_color(self, coords):
-        return (-coords[2] - coords[1]) % 3
-
-
-class HexagonalLatticeGidneyOnCylinder(HexagonalLatticeGidney):
-    def __init__(self, size):
-        super().__init__(size)
-        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
-
-
-class HexagonalLatticeGidneyOnPlaneWithHole(HexagonalLatticeGidney):
-    def __init__(self, size, hole_size=(2,2)):
-        super().__init__(size)
-        hole_x, hole_y = self.size[0]//2, self.size[1]//2
-        self.hole_xs = range(hole_x-hole_size[0]//2, hole_x+hole_size[0]//2)
-        self.hole_ys = range(hole_y-hole_size[1]//2, hole_y+hole_size[1]//2)
-        self.set_boundary([(ix, iy, s) for ix in range(self.size[0]) for iy in [0, self.size[1]-1] for s in range(len(self.sublat_offsets))], 'X')
-        self.set_boundary([(ix, iy, s) for ix in [0, self.size[0]-1] for iy in range(self.size[1]) for s in range(len(self.sublat_offsets))], 'X')
-        self.set_boundary([(ix, iy, s) for ix in self.hole_xs for iy in self.hole_ys for s in range(len(self.sublat_offsets))], 'X')
-
-    def get_sites_on_logical_path(self, direction:str='around_hole'):
-        if direction == 'around_hole':
-            return [(ix, iy, s) for ix in range(self.hole_xs[0]-1, self.hole_xs[-1]+2) for iy in [self.hole_ys[0]-1, self.hole_ys[-1]+1] for s in range(4)] + \
-                     [(ix, iy, s) for ix in [self.hole_xs[0]-1, self.hole_xs[-1]+1] for iy in range(self.hole_ys[0]-1, self.hole_ys[-1]+2) for s in [0,1]]
-        elif direction == 'edge_to_hole':
-            return [(self.hole_xs[-1], iy, s) for iy in range(0, self.hole_ys[0]+1) for s in [0,1]]
-        else:
-            raise ValueError(f"Invalid direction {direction}")
 
 if __name__ == '__main__':
     # Add a hexagonal lattice with skewed coordinates, periodic boundary conditions, and plaquettes

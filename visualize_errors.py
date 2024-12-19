@@ -56,13 +56,13 @@ def draw_shortest_error(code: FloquetCode, circ: stim.Circuit, draw_graph=False,
 
 
 if __name__ == '__main__':
-    lat = HexagonalLatticeGidney((2,3))
-    logical_op_directions = ('x',)
+    lat = HexagonalLattice((6,0),(0,6))
+    logical_op_directions = ('x','y')
     detectors = ('Z',)
     logical_operator_pauli_type = 'Z'
-    num_vortexes = (0,0)  # (0,1)
+    num_vortexes = (0,0)#(-2,2)  # (0,1)
     reps_without_noise = 1
-    reps_with_noise = 1
+    reps_with_noise = 3
     noise_type = 'EM3_v2'#'EM3_v2'#'DEPOLARIZE1'
 
     code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
