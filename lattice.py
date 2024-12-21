@@ -96,6 +96,12 @@ class Lattice:
         all_coords = [(x, y) for x in range(min_x, max_x + 1) for y in range(min_y, max_y + 1)]
         # filter out points outside the parallelogram defined by the lattice vectors using wrap_periodic
         all_coords = [site for site in all_coords if np.allclose(self.wrap_periodic((site[0],site[1],0)), (site[0],site[1],0))]
+        # plot the points and the lattice vectors
+        for site in all_coords:
+            plt.plot(site[0], site[1], 'o')
+        for vec in self.lattice_vectors:
+            plt.quiver(0, 0, vec[0], vec[1], scale=1, scale_units='xy', angles='xy')
+        plt.show()
         return all_coords
 
     def create_graph(self):

@@ -331,19 +331,19 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
     code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
 
     if get_reps_by_graph_dist:
-        circ, _, _ = code.get_circuit(reps=1+2*reps_without_noise, reps_without_noise=reps_without_noise,
+        circ, _, _ = code.get_circuit(reps=3+2*reps_without_noise, reps_without_noise=reps_without_noise,
                                       noise_model = get_noise_model(noise_type, 0.1),
                                       logical_operator_pauli_type=logical_operator_pauli_type,
                                       logical_op_directions=logical_op_directions,
                                       detector_indexes=detector_indexes, detector_args=detector_args, draw=draw,
                                       color_bonds_by_delay=color_bonds_by_delay, **kwargs)
         graph_dist = len(circ.shortest_graphlike_error())
-        reps = 3 * graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
+        reps = graph_dist + 2 * reps_without_noise  # 3 cycles - init, idle, meas
         print('graph_dist: ', graph_dist)
     else:
-        reps = 3 * min(lat.size) + 2 * reps_without_noise  # 3 cycles - init, idle, meas
+        raise ValueError('get_reps_by_graph_dist=False is not implemented')
 
-    print(f'Simulating: dx={lat.size[0]}, dy={lat.size[1]}, reps={reps}, reps_without_noise={reps_without_noise}, \n'
+    print(f'Simulating: l1={code.lat.lattice_vectors[0]}, l2={code.lat.lattice_vectors[1]}, reps={reps}, reps_without_noise={reps_without_noise}, \n'
           f'noise_type={noise_type}, logical_operator_pauli_type={logical_operator_pauli_type}, \n'
           f'num_vortexes={num_vortexes}, shots={shots}')
     for ierr_rate, phys_err_rate in enumerate(phys_err_rate_list):
@@ -361,8 +361,8 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
         rows = []
         for i_direction, direction in enumerate(logical_op_directions):
             rows.append({
-                'dx': lat.size[0],
-                'dy': lat.size[1],
+                'l1': lat.lattice_vectors[0],
+                'l2': lat.lattice_vectors[1],
                 'reps_with_noise': reps - 2 * reps_without_noise,
                 'reps_without_noise': reps_without_noise,
                 'phys_err_rate': phys_err_rate,
@@ -378,8 +378,8 @@ def simulate_vs_noise_rate(phys_err_rate_list, shots, reps_without_noise, noise_
 
         # add the total logical error rate as a row
         rows.append({
-            'dx': lat.size[0],
-            'dy': lat.size[1],
+            'l1': lat.lattice_vectors[0],
+            'l2': lat.lattice_vectors[1],
             'reps_with_noise': reps - 2 * reps_without_noise,
             'reps_without_noise': reps_without_noise,
             'phys_err_rate': phys_err_rate,

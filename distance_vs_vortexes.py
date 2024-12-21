@@ -19,7 +19,7 @@ import os
 #         raise ValueError(f'Unknown logical_op_directions: {logical_op_directions}')
 
 
-for logical_op_directions in [('y',), ('x',)]:
+for logical_op_directions in [('x','y'),('y',), ('x',)]:
     if logical_op_directions[0] == 'x':
         detectors = ('Z')
         logical_operator_pauli_type = 'Z'
@@ -34,10 +34,10 @@ for logical_op_directions in [('y',), ('x',)]:
     reps_without_noise = 1
     draw = False
 
-    L1 = (9,0)
-    L2 = (0,9)
-    vx_list = np.arange(-5+1,5)
-    vy_list = np.arange(-5+1,5)
+    L1 = (6,0)
+    L2 = (0,6)
+    vx_list = np.arange(-1,2+1)
+    vy_list = np.arange(-2,1+1)
     # dx = 2 * Lx
     # dy = 3 * Ly
     # vx_list = np.arange(2 * Lx + 2)
@@ -54,7 +54,7 @@ for logical_op_directions in [('y',), ('x',)]:
 
             # try:
             code = FloquetCode(lat, num_vortexes=num_vortexes, detectors=detectors)
-            circ, _, _, num_logicals = code.get_circuit(reps=2+2*reps_without_noise, reps_without_noise=reps_without_noise,
+            circ, _, _, num_logicals = code.get_circuit(reps=3+2*reps_without_noise, reps_without_noise=reps_without_noise,
                 noise_model = get_noise_model(noise_type, 0.1),
                 logical_operator_pauli_type=logical_operator_pauli_type,
                 logical_op_directions=logical_op_directions,
@@ -82,4 +82,4 @@ for logical_op_directions in [('y',), ('x',)]:
     plt.xlabel('vx')
     plt.ylabel('vy')
     plt.colorbar()
-    plt.savefig(f'figures/distance_vs_vortexes_lattice_{lattice_type.__name__}_noise_{noise_type}_logical_direction_{logical_op_directions[0]}_L1_{L1}_L2_{L2}.pdf')
+    plt.savefig(f'figures/distance_vs_vortexes_lattice_{lattice_type.__name__}_noise_{noise_type}_logical_direction_{logical_op_directions}_L1_{L1}_L2_{L2}.pdf')
