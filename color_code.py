@@ -284,8 +284,8 @@ class FloquetCode:
     def bond_to_full_pauli(self, bond):
         return self.pauli_string_on_sites_to_Pauli(bond.pauli_label, bond.sites)
 
-    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True, show=True, fontsize_measurements=10, ax=None):
-        self.lat.draw()
+    def draw_pauli(self, pauli: Pauli, color_bonds_by_delay=True, show=True, fontsize_measurements=10, ax=None, linewidth=3, qubitsize=10, colorbar_flag=True, rotate_colorbar=None):
+        self.lat.draw(linewidth=linewidth, qubitsize=qubitsize)
         if ax is None:
             ax = plt.gca()
         for bond in self.bonds:
@@ -298,13 +298,14 @@ class FloquetCode:
             x = np.mean(xs)
             y = np.mean(ys)
             y = y + (bond.pauli_label == 'XX') * 0.2 - (bond.pauli_label == 'ZZ') * 0.2
-            ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize_measurements, ha='center',
-                    va='center')
+            if fontsize_measurements > 0:
+                ax.text(x, y, '{:.1f}'.format(bond.order * 6) + bond.pauli_label, fontsize=fontsize_measurements, ha='center',
+                        va='center')
             if color_bonds_by_delay:
                 # set the color to be the bond.order
                 ax.plot(xs, ys, color=plt.cm.viridis(
                     self.location_dependent_delay(self.lat.G.edges[sites[0], sites[1]])
-                ), linewidth=3)
+                ), linewidth=linewidth)
         if pauli is not None:
             for i, pp in enumerate(pauli[::-1]):
                 p = pp.to_label()
@@ -316,9 +317,18 @@ class FloquetCode:
                     ax.plot(x, y, 'co', markersize=20, zorder=20)
                     ax.text(x, y, p, fontsize=20, ha='center', va='center', zorder=30)
         ax.set_aspect('equal')
-        if color_bonds_by_delay:
+        if color_bonds_by_delay and colorbar_flag:
             # shrink the colorbar
-            plt.colorbar(plt.cm.ScalarMappable(cmap='viridis'), ax=ax, label='Bond delay', shrink=0.3)
+            colorbar = plt.colorbar(plt.cm.ScalarMappable(cmap='viridis'), ax=ax, label='Bond delay', shrink=0.3)
+            # increase tick labels values * 6
+            colorbar.set_ticks([0, 1/6, 2/6, 3/6, 4/6, 5/6, 1])
+            colorbar.set_ticklabels([0, 1, 2, 3, 4, 5, 6])
+            # increase the font size of the colorbar
+            for label in colorbar.ax.get_yticklabels():
+                label.set_fontsize(20)
+            if rotate_colorbar:
+                for label in colorbar.ax.get_yticklabels():
+                    label.set_rotation(rotate_colorbar)
         if show:
             plt.show()
 

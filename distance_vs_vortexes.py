@@ -70,7 +70,7 @@ for logical_op_directions in [('x','y'),('y',), ('x',)]:
                 n_qubits = 2 * abs(L1[0] * L2[1] - L1[1] * L2[0])
                 df = pd.DataFrame({'L1': [L1], 'L2': [L1], 'vx': [vx], 'vy': [vy], 'logical_op_direction': logical_op_directions[0], 'dist': [dist], 'n_qubits': [n_qubits]})
                 # add header if file does not exist
-                filename = f'distance_vs_vortices_lattice_{lattice_type.__name__}.csv'
+                filename = f'data/distance_vs_vortices_lattice_{lattice_type.__name__}.csv'
                 df.to_csv(filename, mode='a', header=not os.path.exists(filename), index=False)
             except:
                 print(f'Failed to simulate for L1:{L1},L2:{L2} and num_vortexes={num_vortexes}')

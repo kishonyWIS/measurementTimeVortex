@@ -11,7 +11,7 @@ def parse_tuple(value):
     return ast.literal_eval(value)
 
 # Read the CSV, applying the converter to a specific column
-df = pd.read_csv('data/data_threshold.csv', converters={'num_vortexes': parse_tuple})
+df = pd.read_csv('data/data_threshold_temp.csv', converters={'num_vortexes': parse_tuple})
 df = df.drop(columns=['Unnamed: 0'])
 
 # draw the logical error rate "both" vs the system size for each error rate. Use full lines for no vortexes and dashed lines for 2L-1 vortexes.

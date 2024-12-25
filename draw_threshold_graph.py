@@ -1,152 +1,117 @@
 import ast
-from itertools import cycle
 import matplotlib.pyplot as plt
 import pandas as pd
-from matplotlib.pyplot import title
-from matplotlib.lines import Line2D
-
 from plot_utils import *
+import matplotlib.cm as cm
+import matplotlib.colors as mcolors
+import numpy as np
 
-def parse_tuple(value):
-    return ast.literal_eval(value)
+
+def tuple_int_converter(value):
+    if not value or pd.isna(value):  # Check for empty or NaN values
+        return ()  # Return an empty tuple
+    try:
+        # Handle square bracket format like `[ 2 -1]`
+        if value.startswith("[") and value.endswith("]"):
+            cleaned_value = value.strip("[]").split()
+            return tuple(map(int, cleaned_value))
+        # Handle parentheses format like `(2, -1)` if it appears
+        elif value.startswith("(") and value.endswith(")"):
+            return tuple(map(int, ast.literal_eval(value)))
+        else:
+            raise ValueError(f"Unsupported tuple format: {value}")
+    except (ValueError, SyntaxError) as e:
+        raise ValueError(f"Invalid tuple format: {value}") from e
+
 
 # Read the CSV, applying the converter to a specific column
-df = pd.read_csv('data/data_threshold.csv', converters={'num_vortexes': parse_tuple})
+df = pd.read_csv('data/data_threshold.csv', converters={'num_vortexes': tuple_int_converter, 'l1': tuple_int_converter, 'l2': tuple_int_converter})
 df = df.drop(columns=['Unnamed: 0'])
 
-# draw the logical error rate "both" vs the system size for each error rate. Use full lines for no vortexes and dashed lines for 2L-1 vortexes.
+# Draw the logical error rate "both" vs the system size for each error rate. Use full lines for no vortexes and dashed lines for 2L-1 vortexes.
 
 df = df.drop(columns=['detectors', 'logical_operator_pauli_type', 'reps_with_noise'])
-
-# filter only the "both"
-df_both = df[df['logical_operator_direction'] == 'both'].drop(columns='logical_operator_direction').rename(columns={'log_err_rate': 'log_err_rate_both'})
-
-df_without_vortexes = df_both[df_both['num_vortexes'] == (0,0)]
-df_with_vortexes = df_both[df_both['num_vortexes'] != (0, 0)]
-
-df_fits = pd.DataFrame(columns=['vortexes', 'phys_err_rate', 'm', 'b'])
-# Create a new plot
-plt.figure()
-for df, linestyle in zip([df_without_vortexes, df_with_vortexes], ['-', '--']):
-    # reset colors
-    plt.gca().set_prop_cycle(None)
-    color_cycle = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
-    # Group by the chosen columns and plot each group
-    for name, group in df.groupby('phys_err_rate'):
-        label = f'p={name}' if linestyle == '-' else None
-        color = next(color_cycle)
-        plt.semilogy(group['dx']/2, group['log_err_rate_both'], label=label, linestyle='', marker='o', color=color)
-        # calculate a linear fit
-        x = group['dx']/2
-        y = np.log(group['log_err_rate_both'])
-        # filter out the infinities
-        x = x[np.isfinite(y)]
-        y = y[np.isfinite(y)]
-        print(x)
-        print(y)
-        m, b = np.polyfit(x[-2:], y[-2:], 1)
-        plt.semilogy(x, np.exp(m*x+b), linestyle=linestyle, color=color)
-        df_fits = pd.concat([df_fits, pd.DataFrame({'vortexes': linestyle, 'phys_err_rate': [name], 'm': [m], 'b': [b]})])
-
-plt.xlabel('L')
-plt.ylabel('Logical error rate')
-plt.legend()
+df = df[df['logical_operator_direction'] == 'both'].drop(columns='logical_operator_direction').rename(columns={'log_err_rate': 'log_err_rate_both'})
 
 
-# calculate the teraquop footprint for each error rate and vortexs vs. no vortexs
-# extrapolate the logical error rate for the teraquop footprint
+# Draw the logical error rate 'both' vs. physical error rate for each system size. Use full lines for no vortexes and dashed lines with vortexes.
+# Color according to square root of number of qubits
 
-plt.figure()
-for linestyle in ['-', '--']:
-    df_fits_vortexes = df_fits[df_fits['vortexes'] == linestyle]
-    phys_err_rate = []
-    teraquop_footprint = []
-    for row in df_fits_vortexes.itertuples():
-        # calculate the teraquop footprint
-        L = (np.log(1e-12) - row.b) / row.m
-        dx = 2*L
-        dy = 3*L
-        N = dx*dy*4
-        teraquop_footprint.append(N)
-        phys_err_rate.append(row.phys_err_rate)
-    plt.loglog(phys_err_rate, teraquop_footprint, linestyle=linestyle, marker='o')
-plt.xlabel('Physical error rate')
-plt.ylabel('Teraquop footprint')
-plt.legend(['0 vortexes', '2L-1 vortexes'])
+df['has_vortices'] = df['num_vortexes'].apply(lambda x: x != (0, 0))
+
+# num_qubits = 2 * |L1 x L2|
+df['l1_1'] = df['l1'].apply(lambda x: x[0])
+df['l1_2'] = df['l1'].apply(lambda x: x[1])
+df['l2_1'] = df['l2'].apply(lambda x: x[0])
+df['l2_2'] = df['l2'].apply(lambda x: x[1])
+df['num_qubits'] = 2 * abs(df['l1_1'] * df['l2_2'] - df['l1_2'] * df['l2_1'])
+
+df = df[df['num_qubits'] < 100]
 
 
+# for each num_qubits, distance, if there are multiple L1, L2, num_vortexes, choose the one with the lowest logical error rate at
+phys_err_rate = 0.0031622776601683794
+df_fixed_phys_err_rate = df[np.abs(df['phys_err_rate'] - 0.0031622776601683794) < 1e-10]
+L1, L2, num_vortexes = [], [], []
+for (num_qubits, has_vortices), group_L in df_fixed_phys_err_rate.groupby(['num_qubits', 'has_vortices']):
+    min_logical_error_rate = group_L['log_err_rate_both'].min()
+    min_logical_error_rate_group = group_L[group_L['log_err_rate_both'] == min_logical_error_rate]
+    L1.append(min_logical_error_rate_group['l1'].iloc[0])
+    L2.append(min_logical_error_rate_group['l2'].iloc[0])
+    num_vortexes.append(min_logical_error_rate_group['num_vortexes'].iloc[0])
+df = df.query('l1 in @L1 and l2 in @L2 and num_vortexes in @num_vortexes')
 
 
-scale=1.8
+# Color based on the square root of num_qubits
+df['sqrt_num_qubits'] = np.sqrt(df['num_qubits'])
 
+# Define colormap based on the square root values
+num_qubits_to_color = {sqrt_num_qubits: color for sqrt_num_qubits, color in zip(sorted(df['sqrt_num_qubits'].unique()), plt.cm.turbo(np.linspace(0, 1, len(df['sqrt_num_qubits'].unique()))))}
+colormap = cm.get_cmap('turbo')
+norm = mcolors.Normalize(vmin=min(df['sqrt_num_qubits']), vmax=max(df['sqrt_num_qubits']))
 
-# plot the logical error rate vs the physical error rate for each system size. Use full lines for no vortexes and dashed lines for 2L-1 vortexes.
-plt.figure()
-# Initialize lists to track legend elements for line styles and colors
-line_style_elements = []
-line_style_elements.append(Line2D([], [], color='black', linestyle='-', label='$(0,0)$'))
-line_style_elements.append(Line2D([], [], color='black', linestyle=':', label='$(0,2L-1)$'))
-color_elements = []
+fig1, ax1 = plt.subplots()
+for (l1, l2, num_vortexes, num_qubits, sqrt_num_qubits), group_L in sorted(df.groupby(['l1', 'l2', 'num_vortexes', 'num_qubits', 'sqrt_num_qubits']), key=lambda x: x[0][3]):
+    has_vortexes = num_vortexes != (0, 0)
+    num_qubits = group_L['num_qubits'].iloc[0]
+    linestyle = '-' if not has_vortexes else ':'
+    marker = 'o' if not has_vortexes else 'x'
+    L1 = (l1[0], l1[1], -6 * num_vortexes[0])
+    L2 = (l2[0], l2[1], -6 * num_vortexes[1])
+    plt.loglog(group_L['phys_err_rate'], group_L['log_err_rate_both'], linestyle=linestyle, marker=marker, label=f'{L1}, {L2}', color=num_qubits_to_color[sqrt_num_qubits])
 
-# First loop: plot the data
-for df, linestyle in zip([df_without_vortexes, df_with_vortexes], ['-', ':']):
-    # Reset colors
-    plt.gca().set_prop_cycle(None)
-    color_cycle = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
-    # Group by the chosen columns and plot each group
-    for name, group in df.groupby('dx'):
-        color_label = f"{int(name / 2)}" if linestyle == '-' else None
-        color = next(color_cycle)
-        plt.loglog(group['phys_err_rate'], group['log_err_rate_both'], label=color_label, color=color, linestyle=linestyle, marker='o')
+# Create the colorbar with the square root of num_qubits but display num_qubits on the colorbar
+sm = cm.ScalarMappable(cmap=colormap, norm=norm)
+sm.set_array([])  # Set array to associate with the ScalarMappable
+cbar = fig1.colorbar(sm, ax=ax1, label='Number of qubits')
+cbar.set_ticks(np.sqrt(sorted(np.unique(df['num_qubits']))))  # Set the ticks to the square root of the num_qubits values
+cbar.set_ticklabels(sorted(np.unique(df['num_qubits'])))  # Set the tick labels to the num_qubits values
 
-        # Add color elements for each L
-        if color_label is not None:
-            color_elements.append(Line2D([], [], color=color, marker='o', label=color_label))
+# Make the legend more compact
+plt.legend(title='$L_1$,  $L_2$', handletextpad=0.4, borderpad=0.5, labelspacing=0.5, fontsize=9.5)
 
-# Create the first legend (for line styles)
-legend1 = plt.legend(handles=line_style_elements, title='$(n_x,n_y)$', fontsize=6 * scale, title_fontsize=8 * scale, loc='upper left')
+# at fixed phys_err_rate = 0.0031622776601683794 draw the logical error rate vs. the system size
+df = df[np.abs(df['phys_err_rate'] - 0.0031622776601683794) < 1e-10]
 
-# Add the first legend to the axes
-plt.gca().add_artist(legend1)
+fig2, ax2 = plt.subplots()
+for with_vortices, group_L in df.groupby('has_vortices'):
+    linestyle = '-' if not with_vortices else ':'
+    marker = 'o' if not with_vortices else 'x'
+    plt.semilogy(
+        group_L['num_qubits'],
+        group_L['log_err_rate_both'],
+        linestyle=linestyle,
+        marker=marker,
+        label='with vortices' if with_vortices else 'without vortices'
+    )
+plt.legend(handlelength=2, handletextpad=0.5)
 
-# Create the second legend (for colors)
-plt.legend(handles=color_elements, title='L', fontsize=6 * scale, title_fontsize=8 * scale, loc='lower right')
+plt.sca(ax1)
+edit_graph('Physical error rate', 'Logical error rate', ax = ax1, scale=1.5)
+plt.savefig('figures/threshold_graph.pdf')
 
-
-
-
-edit_graph('Physical error rate', 'Logical error rate', scale=scale)
-
-plt.savefig('figures/threshold_graph_both.pdf')
-
-
-
-
-# plot the logical error rate vs the physical error rate for each system size. Draw all vortex configurations in the same plot.
-# set the marker to be the number of vortexes in the x direction
-# set the linestyle to be the number of vortexes in the y direction
-# set the color to be the system size
-
-plt.figure()
-# reset colors
-plt.gca().set_prop_cycle(None)
-color_cycle = cycle(plt.rcParams['axes.prop_cycle'].by_key()['color'])
-# reset markers cycle
-plt.gca().set_prop_cycle(None)
-markers = list(Line2D.filled_markers)
-# reset linestyles cycle
-linestyles = ['-', '--', ':', '-.']*10
-# Group by the chosen columns and plot each group
-for name_dx, group_dx in df_both.groupby('dx'):
-    color = next(color_cycle)
-    for name_vortexes, group_vortexes in group_dx.groupby('num_vortexes'):
-        marker = markers[int(name_vortexes[0])]
-        linestyle = linestyles[int(name_vortexes[1])]
-        plt.loglog(group_vortexes['phys_err_rate'], group_vortexes['log_err_rate_both'], label=f'L={name_dx}, {name_vortexes}', linestyle=linestyle, marker=marker, color=color)
-
-
-
-
+plt.sca(ax2)
+edit_graph('Number of qubits', 'Logical error rate', ax = ax2, scale=1.5)
+plt.savefig('figures/threshold_graph_num_qubits.pdf')
 
 plt.show()
-

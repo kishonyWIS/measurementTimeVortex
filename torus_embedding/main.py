@@ -41,14 +41,54 @@ def get_vector_length(v: tuple[int,int,int]):
     else:
         raise ValueError('The time coordinate of the vector must be divisible by 4')
 
+def all_symmetric_lattices(L1: tuple[int,int,int], L2: tuple[int,int,int]):
+    def reflection(L):
+        return (-L[0], L[0]+L[1], L[2])
+    def rotation60degrees_and_time_reversal(L):
+        return (-L[1], L[0]+L[1], -L[2])
+    symmetric_lattices = []
+    for num_reflections in range(2):
+        for num_rotations in range(6):
+            L1_symmetric = L1
+            L2_symmetric = L2
+            for _ in range(num_reflections):
+                L1_symmetric = reflection(L1_symmetric)
+                L2_symmetric = reflection(L2_symmetric)
+            for _ in range(num_rotations):
+                L1_symmetric = rotation60degrees_and_time_reversal(L1_symmetric)
+                L2_symmetric = rotation60degrees_and_time_reversal(L2_symmetric)
+            symmetric_lattices.append((L1_symmetric, L2_symmetric))
+    return symmetric_lattices
+
+def lattices_are_equiv_or_symmetric(L1first: tuple[int,int,int], L2first: tuple[int,int,int], L1second: tuple[int,int,int], L2second: tuple[int,int,int]):
+    for L1_symmetric, L2_symmetric in all_symmetric_lattices(L1second, L2second):
+        if lattices_are_equiv(L1first, L2first, L1_symmetric, L2_symmetric):
+            return True
+    return False
+
 def lattices_are_equiv(L1first: tuple[int,int,int], L2first: tuple[int,int,int], L1second: tuple[int,int,int], L2second: tuple[int,int,int]):
     # check if L1first, L2first are integer linear combinations of L1second, L2second and vice versa
     # solve the linear system
     A = np.array([L1second, L2second]).T
     B = np.array([L1first, L2first]).T
-    X = np.linalg.solve(A, B)
+    X = np.linalg.solve(A[:2,:], B[:2,:])
     # check if the solution is an integer matrix
-    return np.allclose(X, np.round(X))
+    is_integer = np.allclose(X, np.round(X))
+    # check if the solution is a valid transformation
+    is_valid = np.allclose(A @ X, B)
+    return is_integer and is_valid
+
+def reduce_equivalent_lattices(lattices):
+    reduced_lattices = []
+    for L1, L2 in lattices:
+        is_new = True
+        for L1_, L2_ in reduced_lattices:
+            if lattices_are_equiv_or_symmetric(L1, L2, L1_, L2_):
+                is_new = False
+                break
+        if is_new:
+            reduced_lattices.append((L1, L2))
+    return reduced_lattices
 
 def lll_reduce_new(L1: tuple, L2: tuple):
     B = [L1, L2]
@@ -174,15 +214,12 @@ def draw_distance_vs_num_vortices(a1,b1,a2,b2):
     plt.colorbar()
     plt.show()
 
-if __name__ == '__main__':
-    # draw_distance_vs_num_vortices(6,0,0,6)
 
-    # find the torus with the best area for each distance
+def find_optimal_lattice_for_each_distance(max_num_qubits = 1000):
     best_area_for_dist = dict()
     best_torus_for_dist = dict()
     best_area_for_dist_no_vortex = dict()
     best_torus_for_dist_no_vortex = dict()
-    max_num_qubits = 1000
     for L1, L2 in tqdm(generate_all_lattices(max_num_qubits)):
         # filter even number of vortices in each direction
         dist = get_distance_torus(L1, L2)
@@ -194,7 +231,6 @@ if __name__ == '__main__':
             if dist not in best_area_for_dist_no_vortex or area < best_area_for_dist_no_vortex[dist]:
                 best_area_for_dist_no_vortex[dist] = int(area)
                 best_torus_for_dist_no_vortex[dist] = (L1, L2)
-
     # save the data to a csv file using pandas
     rows = []
     for dist in sorted(best_area_for_dist.keys()):
@@ -202,28 +238,103 @@ if __name__ == '__main__':
         L1_no_vortex, L2_no_vortex = best_torus_for_dist_no_vortex.get(dist, (None, None))
         num_qubits = best_area_for_dist[dist]
         num_qubits_no_vortex = best_area_for_dist_no_vortex.get(dist, None)
-        rows.append({'distance': dist, 'num_qubits': num_qubits, 'L1': L1, 'L2': L2, 'num_qubits_no_vortex': num_qubits_no_vortex, 'L1_no_vortex': L1_no_vortex, 'L2_no_vortex': L2_no_vortex})
+        rows.append({'distance': dist, 'num_qubits': num_qubits, 'L1': L1, 'L2': L2,
+                     'num_qubits_no_vortex': num_qubits_no_vortex, 'L1_no_vortex': L1_no_vortex,
+                     'L2_no_vortex': L2_no_vortex})
     df = pd.DataFrame(rows)
     # make dtype of num_qubits_no_vortex an integer
     df['num_qubits_no_vortex'] = df['num_qubits_no_vortex'].astype('Int64')
     # save to csv without index, overwrite the file if it exists, create the file if it does not exist
     df.to_csv('../data/best_torus_for_distance.csv', index=False)
-
-
     # print the results
     for dist in sorted(best_area_for_dist.keys()):
-        print(f'distance: {dist}, area: {best_area_for_dist[dist]}, A/d^2: {best_area_for_dist[dist]/dist**2}, torus: {best_torus_for_dist[dist]}')
+        print(
+            f'distance: {dist}, area: {best_area_for_dist[dist]}, A/d^2: {best_area_for_dist[dist] / dist ** 2}, torus: {best_torus_for_dist[dist]}')
     for dist in sorted(best_area_for_dist_no_vortex.keys()):
-        print(f'distance: {dist}, area: {best_area_for_dist_no_vortex[dist]}, A/d^2: {best_area_for_dist_no_vortex[dist]/dist**2}, torus: {best_torus_for_dist_no_vortex[dist]}')
+        print(
+            f'distance: {dist}, area: {best_area_for_dist_no_vortex[dist]}, A/d^2: {best_area_for_dist_no_vortex[dist] / dist ** 2}, torus: {best_torus_for_dist_no_vortex[dist]}')
     # plot the area/distance squared as a function of distance
     plt.figure()
     x = sorted(best_area_for_dist_no_vortex.keys())
-    y = [best_area_for_dist_no_vortex[dist]/dist**2 for dist in x]
+    y = [best_area_for_dist_no_vortex[dist] / dist ** 2 for dist in x]
     plt.plot(x, y)
     x = sorted(best_area_for_dist.keys())
-    y = [best_area_for_dist[dist]/dist**2 for dist in x]
+    y = [best_area_for_dist[dist] / dist ** 2 for dist in x]
     plt.plot(x, y)
     plt.legend(['Without Vortices', 'With Vortices'])
-    edit_graph('$D$',  '$N/D^2$', scale=1.5)
+    edit_graph('$D$', '$N/D^2$', scale=1.5)
     plt.savefig('../figures/figure_of_merit_vs_distance.pdf')
     plt.show()
+
+def find_all_optimal_lattices(max_num_qubits = 1000):
+    # for each distance, find all tori with the best area
+    best_area_for_dist = dict()
+    best_torus_for_dist = dict()
+    best_area_for_dist_no_vortex = dict()
+    best_torus_for_dist_no_vortex = dict()
+    for L1, L2 in tqdm(generate_all_lattices(max_num_qubits)):
+        # filter even number of vortices in each direction
+        dist = get_distance_torus(L1, L2)
+        area = get_area(L1, L2)
+        if dist not in best_area_for_dist or area < best_area_for_dist[dist]:
+            best_area_for_dist[dist] = int(area)
+            best_torus_for_dist[dist] = [(L1, L2)]
+        elif area == best_area_for_dist[dist]:
+            best_torus_for_dist[dist].append((L1, L2))
+        if L1[-1] == 0 and L2[-1] == 0:
+            if dist not in best_area_for_dist_no_vortex or area < best_area_for_dist_no_vortex[dist]:
+                best_area_for_dist_no_vortex[dist] = int(area)
+                best_torus_for_dist_no_vortex[dist] = [(L1, L2)]
+            elif area == best_area_for_dist_no_vortex[dist]:
+                best_torus_for_dist_no_vortex[dist].append((L1, L2))
+    # reduce equivalent lattices
+    for dist in best_torus_for_dist:
+        best_torus_for_dist[dist] = reduce_equivalent_lattices(best_torus_for_dist[dist])
+    for dist in best_torus_for_dist_no_vortex:
+        best_torus_for_dist_no_vortex[dist] = reduce_equivalent_lattices(best_torus_for_dist_no_vortex[dist])
+
+    for with_vortexes in [True, False]:
+        best_torus = best_torus_for_dist if with_vortexes else best_torus_for_dist_no_vortex
+        best_area = best_area_for_dist if with_vortexes else best_area_for_dist_no_vortex
+        data = []
+        for distance in sorted(best_torus.keys()):
+            configurations = best_torus[distance]
+            num_qubits = best_area.get(distance, None)
+            for L1, L2 in configurations:
+                data.append({
+                    "distance": distance,
+                    "# qubits": num_qubits,
+                    "L1": L1,
+                    "L2": L2
+                })
+
+        # Create the DataFrame
+        df = pd.DataFrame(data)
+
+        # Save to CSV
+        df.to_csv(f"../data/torus_configurations_{'with' if with_vortexes else 'without'}_vortices.csv", index=False)
+
+    return best_torus_for_dist, best_torus_for_dist_no_vortex, best_area_for_dist, best_area_for_dist_no_vortex
+
+
+def find_all_lattices_with_num_qubits_and_distance(num_qubits, distance):
+    lattices = []
+    for L1, L2 in generate_all_lattices(num_qubits):
+        if get_distance_torus(L1, L2) == distance and get_area(L1, L2) == num_qubits:
+            lattices.append((L1, L2))
+    # reduce equivalent lattices
+    lattices = reduce_equivalent_lattices(lattices)
+    return sorted(lattices)
+
+if __name__ == '__main__':
+    # draw_distance_vs_num_vortices(6,0,0,6)
+
+    # lattices = find_all_lattices_with_num_qubits_and_distance(72,5)
+    # print(lattices)
+    # print(len(lattices))
+
+    # find the torus with the best area for each distance
+    # find_optimal_lattice_for_each_distance(1000)
+
+    # find all optimal lattices
+    best_torus_for_dist, best_torus_for_dist_no_vortex, best_area_for_dist, best_area_for_dist_no_vortex = find_all_optimal_lattices(1000)
