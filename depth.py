@@ -136,10 +136,10 @@ if __name__ == '__main__':
     #     print(max(depths))
     #     print()
     # (2, 5, -12)	(8, -4, -18)
-    lat = HexagonalLattice((2,5), (8,-4))
+    lat = HexagonalLattice((3,0), (1,-5))
     reps_without_noise = 1
     reps_with_noise = 0
-    code = FloquetCode(lat, num_vortexes=(2,3), detectors=('X',))
+    code = FloquetCode(lat, num_vortexes=(1,0), detectors=('X',))
 
     bonds = [b.sites for b in code.bonds]*10
     #filter only bonds with first coordinate of both qubits equal to 0

@@ -63,8 +63,9 @@ def edit_graph(xlabel=None, ylabel=None, ax=None, title=None, legend_title=None,
         ax.set_xticklabels(xticklabels)
     if yticklabels is not None:
         ax.set_yticklabels(yticklabels)
-    plt.tick_params(axis='both', which='major', labelsize=10 * scale)
 
+    ax.tick_params(axis='x', which='major', labelsize=10 * scale)
+    ax.tick_params(axis='y', which='major', labelsize=10 * scale)
     # Apply colormap if specified
     if colormap is not None:
         for im in ax.get_images():
