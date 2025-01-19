@@ -1,0 +1,298 @@
+import stim
+from matplotlib import pyplot as plt
+
+circ = stim.Circuit.generated("toric_code:memory", rounds=3, distance=3, before_round_data_depolarization=0.04, before_measure_flip_probability=0.01)
+
+# circ = stim.Circuit("""
+# QUBIT_COORDS(0, 0) 0
+# QUBIT_COORDS(0, 1) 1
+# QUBIT_COORDS(0, 2) 2
+# QUBIT_COORDS(0, 3) 3
+# QUBIT_COORDS(0, 4) 4
+# QUBIT_COORDS(0, 5) 5
+# QUBIT_COORDS(0, 6) 6
+# QUBIT_COORDS(0.5, 0.5) 7
+# QUBIT_COORDS(0.5, 1.5) 8
+# QUBIT_COORDS(0.5, 2.5) 9
+# QUBIT_COORDS(0.5, 3.5) 10
+# QUBIT_COORDS(0.5, 4.5) 11
+# QUBIT_COORDS(0.5, 5.5) 12
+# QUBIT_COORDS(1, 0) 13
+# QUBIT_COORDS(1, 1) 14
+# QUBIT_COORDS(1, 2) 15
+# QUBIT_COORDS(1, 3) 16
+# QUBIT_COORDS(1, 4) 17
+# QUBIT_COORDS(1, 5) 18
+# QUBIT_COORDS(1, 6) 19
+# QUBIT_COORDS(1.5, 0.5) 20
+# QUBIT_COORDS(1.5, 1.5) 21
+# QUBIT_COORDS(1.5, 2.5) 22
+# QUBIT_COORDS(1.5, 3.5) 23
+# QUBIT_COORDS(1.5, 4.5) 24
+# QUBIT_COORDS(1.5, 5.5) 25
+# QUBIT_COORDS(2, 0) 26
+# QUBIT_COORDS(2, 1) 27
+# QUBIT_COORDS(2, 2) 28
+# QUBIT_COORDS(2, 3) 29
+# QUBIT_COORDS(2, 4) 30
+# QUBIT_COORDS(2, 5) 31
+# QUBIT_COORDS(2, 6) 32
+# QUBIT_COORDS(2.5, 0.5) 33
+# QUBIT_COORDS(2.5, 1.5) 34
+# QUBIT_COORDS(2.5, 2.5) 35
+# QUBIT_COORDS(2.5, 3.5) 36
+# QUBIT_COORDS(2.5, 4.5) 37
+# QUBIT_COORDS(2.5, 5.5) 38
+# QUBIT_COORDS(3, 0) 39
+# QUBIT_COORDS(3, 1) 40
+# QUBIT_COORDS(3, 2) 41
+# QUBIT_COORDS(3, 3) 42
+# QUBIT_COORDS(3, 4) 43
+# QUBIT_COORDS(3, 5) 44
+# QUBIT_COORDS(3, 6) 45
+# QUBIT_COORDS(3.5, 0.5) 46
+# QUBIT_COORDS(3.5, 1.5) 47
+# QUBIT_COORDS(3.5, 2.5) 48
+# QUBIT_COORDS(3.5, 3.5) 49
+# QUBIT_COORDS(3.5, 4.5) 50
+# QUBIT_COORDS(3.5, 5.5) 51
+# QUBIT_COORDS(4, 0) 52
+# QUBIT_COORDS(4, 1) 53
+# QUBIT_COORDS(4, 2) 54
+# QUBIT_COORDS(4, 3) 55
+# QUBIT_COORDS(4, 4) 56
+# QUBIT_COORDS(4, 5) 57
+# QUBIT_COORDS(4, 6) 58
+# QUBIT_COORDS(4.5, 0.5) 59
+# QUBIT_COORDS(4.5, 1.5) 60
+# QUBIT_COORDS(4.5, 2.5) 61
+# QUBIT_COORDS(4.5, 3.5) 62
+# QUBIT_COORDS(4.5, 4.5) 63
+# QUBIT_COORDS(4.5, 5.5) 64
+# QUBIT_COORDS(5, 0) 65
+# QUBIT_COORDS(5, 1) 66
+# QUBIT_COORDS(5, 2) 67
+# QUBIT_COORDS(5, 3) 68
+# QUBIT_COORDS(5, 4) 69
+# QUBIT_COORDS(5, 5) 70
+# QUBIT_COORDS(5, 6) 71
+# QUBIT_COORDS(5.5, 0.5) 72
+# QUBIT_COORDS(5.5, 1.5) 73
+# QUBIT_COORDS(5.5, 2.5) 74
+# QUBIT_COORDS(5.5, 3.5) 75
+# QUBIT_COORDS(5.5, 4.5) 76
+# QUBIT_COORDS(5.5, 5.5) 77
+# QUBIT_COORDS(6, 0) 78
+# QUBIT_COORDS(6, 1) 79
+# QUBIT_COORDS(6, 2) 80
+# QUBIT_COORDS(6, 3) 81
+# QUBIT_COORDS(6, 4) 82
+# QUBIT_COORDS(6, 5) 83
+# QUBIT_COORDS(6, 6) 84
+# #!pragma POLYGON(0,0,1,0.25) 13 26 27 14
+# #!pragma POLYGON(0,0,1,0.25) 1 14 15 2
+# #!pragma POLYGON(0,0,1,0.25) 15 28 29 16
+# #!pragma POLYGON(0,0,1,0.25) 3 16 17 4
+# #!pragma POLYGON(0,0,1,0.25) 41 54 55 42
+# #!pragma POLYGON(0,0,1,0.25) 29 42 43 30
+# #!pragma POLYGON(0,0,1,0.25) 39 52 53 40
+# #!pragma POLYGON(0,0,1,0.25) 27 40 41 28
+# #!pragma POLYGON(0,0,1,0.25) 65 78 79 66
+# #!pragma POLYGON(0,0,1,0.25) 53 66 67 54
+# #!pragma POLYGON(0,0,1,0.25) 67 80 81 68
+# #!pragma POLYGON(0,0,1,0.25) 55 68 69 56
+# #!pragma POLYGON(0,0,1,0.25) 69 82 83 70
+# #!pragma POLYGON(0,0,1,0.25) 57 70 71 58
+# #!pragma POLYGON(0,0,1,0.25) 43 56 57 44
+# #!pragma POLYGON(0,0,1,0.25) 31 44 45 32
+# #!pragma POLYGON(0,0,1,0.25) 17 30 31 18
+# #!pragma POLYGON(0,0,1,0.25) 5 18 19 6
+# #!pragma POLYGON(1,0,0,0.25) 0 13 14 1
+# #!pragma POLYGON(1,0,0,0.25) 14 27 28 15
+# #!pragma POLYGON(1,0,0,0.25) 2 15 16 3
+# #!pragma POLYGON(1,0,0,0.25) 16 29 30 17
+# #!pragma POLYGON(1,0,0,0.25) 28 41 42 29
+# #!pragma POLYGON(1,0,0,0.25) 42 55 56 43
+# #!pragma POLYGON(1,0,0,0.25) 26 39 40 27
+# #!pragma POLYGON(1,0,0,0.25) 40 53 54 41
+# #!pragma POLYGON(1,0,0,0.25) 52 65 66 53
+# #!pragma POLYGON(1,0,0,0.25) 66 79 80 67
+# #!pragma POLYGON(1,0,0,0.25) 54 67 68 55
+# #!pragma POLYGON(1,0,0,0.25) 68 81 82 69
+# #!pragma POLYGON(1,0,0,0.25) 56 69 70 57
+# #!pragma POLYGON(1,0,0,0.25) 70 83 84 71
+# #!pragma POLYGON(1,0,0,0.25) 30 43 44 31
+# #!pragma POLYGON(1,0,0,0.25) 44 57 58 45
+# #!pragma POLYGON(1,0,0,0.25) 4 17 18 5
+# #!pragma POLYGON(1,0,0,0.25) 18 31 32 19
+# TICK
+# R 0 1 2 3 4 5 13 14 15 16 17 18 26 27 28 29 30 31 39 40 41 42 43 44 52 53 54 55 56 57 65 66 67 68 69 70
+# #!pragma MARKZ(0) 39 40 41 42 43 44
+# TICK
+# R 8 10 12 20 22 24 34 36 38 46 48 50 60 62 64 72 74 76
+# RX 7 9 11 21 23 25 33 35 37 47 49 51 59 61 63 73 75 77
+# #!pragma MARKZ(1) 60
+# TICK
+# CX 7 0 1 8 9 2 3 10 11 4 5 12 13 20 21 14 15 22 23 16 17 24 25 18 33 26 27 34 35 28 29 36 37 30 31 38 39 46 47 40 41 48 49 42 43 50 51 44 59 52 53 60 61 54 55 62 63 56 57 64 65 72 73 66 67 74 75 68 69 76 77 70
+# TICK
+# CX 7 13 14 8 9 15 16 10 11 17 18 12 26 20 21 27 28 22 23 29 30 24 25 31 33 39 40 34 35 41 42 36 37 43 44 38 52 46 47 53 54 48 49 55 56 50 51 57 59 65 66 60 61 67 68 62 63 69 70 64 0 72 2 74 4 76 73 1 75 3 77 5
+# TICK
+# CX 7 1 2 8 9 3 4 10 11 5 14 20 21 15 16 22 23 17 18 24 33 27 28 34 35 29 30 36 37 31 40 46 47 41 42 48 49 43 44 50 59 53 54 60 61 55 56 62 63 57 66 72 73 67 68 74 75 69 70 76 0 12 26 38 52 64 25 13 51 39 77 65
+# TICK
+# CX 7 14 15 8 9 16 17 10 11 18 27 20 21 28 29 22 23 30 31 24 33 40 41 34 35 42 43 36 37 44 53 46 47 54 55 48 49 56 57 50 59 66 67 60 61 68 69 62 63 70 13 12 39 38 65 64 25 26 51 52 1 72 3 74 5 76 73 2 75 4 77 0
+# TICK
+# M 8 10 12 20 22 24 34 36 38 46 48 50 60 62 64 72 74 76
+# MX 7 9 11 21 23 25 33 35 37 47 49 51 59 61 63 73 75 77
+# #!pragma MARKZ(1) 60
+# DETECTOR(0.5, 1.5, 0) rec[-36]
+# DETECTOR(0.5, 3.5, 0) rec[-35]
+# DETECTOR(0.5, 5.5, 0) rec[-34]
+# DETECTOR(1.5, 0.5, 0) rec[-33]
+# DETECTOR(1.5, 2.5, 0) rec[-32]
+# DETECTOR(1.5, 4.5, 0) rec[-31]
+# DETECTOR(2.5, 1.5, 0) rec[-30]
+# DETECTOR(2.5, 3.5, 0) rec[-29]
+# DETECTOR(2.5, 5.5, 0) rec[-28]
+# DETECTOR(3.5, 0.5, 0) rec[-27]
+# DETECTOR(3.5, 2.5, 0) rec[-26]
+# DETECTOR(3.5, 4.5, 0) rec[-25]
+# DETECTOR(4.5, 1.5, 0) rec[-24]
+# DETECTOR(4.5, 3.5, 0) rec[-23]
+# DETECTOR(4.5, 5.5, 0) rec[-22]
+# DETECTOR(5.5, 0.5, 0) rec[-21]
+# DETECTOR(5.5, 2.5, 0) rec[-20]
+# DETECTOR(5.5, 4.5, 0) rec[-19]
+# TICK
+# R 8 10 12 20 22 24 34 36 38 46 48 50 60 62 64 72 74 76
+# RX 7 9 11 21 23 25 33 35 37 47 49 51 59 61 63 73 75 77
+# #!pragma MARKX(2) 25
+# #!pragma MARKZ(1) 60
+# TICK
+# CX 7 0 1 8 9 2 3 10 11 4 5 12 13 20 21 14 15 22 23 16 17 24 25 18 33 26 27 34 35 28 29 36 37 30 31 38 39 46 47 40 41 48 49 42 43 50 51 44 59 52 53 60 61 54 55 62 63 56 57 64 65 72 73 66 67 74 75 68 69 76 77 70
+# TICK
+# CX 7 13 14 8 9 15 16 10 11 17 18 12 26 20 21 27 28 22 23 29 30 24 25 31 33 39 40 34 35 41 42 36 37 43 44 38 52 46 47 53 54 48 49 55 56 50 51 57 59 65 66 60 61 67 68 62 63 69 70 64 0 72 2 74 4 76 73 1 75 3 77 5
+# TICK
+# CX 7 1 2 8 9 3 4 10 11 5 14 20 21 15 16 22 23 17 18 24 33 27 28 34 35 29 30 36 37 31 40 46 47 41 42 48 49 43 44 50 59 53 54 60 61 55 56 62 63 57 66 72 73 67 68 74 75 69 70 76 0 12 26 38 52 64 25 13 51 39 77 65
+# TICK
+# CX 7 14 15 8 9 16 17 10 11 18 27 20 21 28 29 22 23 30 31 24 33 40 41 34 35 42 43 36 37 44 53 46 47 54 55 48 49 56 57 50 59 66 67 60 61 68 69 62 63 70 13 12 39 38 65 64 25 26 51 52 1 72 3 74 5 76 73 2 75 4 77 0
+# TICK
+# M 8 10 12 20 22 24 34 36 38 46 48 50 60 62 64 72 74 76
+# MX 7 9 11 21 23 25 33 35 37 47 49 51 59 61 63 73 75 77
+# #!pragma MARKX(2) 25
+# #!pragma MARKZ(1) 60
+# DETECTOR(0.5, 1.5, 1) rec[-36] rec[-72]
+# DETECTOR(0.5, 3.5, 1) rec[-35] rec[-71]
+# DETECTOR(0.5, 5.5, 1) rec[-34] rec[-70]
+# DETECTOR(1.5, 0.5, 1) rec[-33] rec[-69]
+# DETECTOR(1.5, 2.5, 1) rec[-32] rec[-68]
+# DETECTOR(1.5, 4.5, 1) rec[-31] rec[-67]
+# DETECTOR(2.5, 1.5, 1) rec[-30] rec[-66]
+# DETECTOR(2.5, 3.5, 1) rec[-29] rec[-65]
+# DETECTOR(2.5, 5.5, 1) rec[-28] rec[-64]
+# DETECTOR(3.5, 0.5, 1) rec[-27] rec[-63]
+# DETECTOR(3.5, 2.5, 1) rec[-26] rec[-62]
+# DETECTOR(3.5, 4.5, 1) rec[-25] rec[-61]
+# DETECTOR(4.5, 1.5, 1) rec[-24] rec[-60]
+# DETECTOR(4.5, 3.5, 1) rec[-23] rec[-59]
+# DETECTOR(4.5, 5.5, 1) rec[-22] rec[-58]
+# DETECTOR(5.5, 0.5, 1) rec[-21] rec[-57]
+# DETECTOR(5.5, 2.5, 1) rec[-20] rec[-56]
+# DETECTOR(5.5, 4.5, 1) rec[-19] rec[-55]
+# DETECTOR(0.5, 0.5, 1) rec[-18] rec[-54]
+# DETECTOR(0.5, 2.5, 1) rec[-17] rec[-53]
+# DETECTOR(0.5, 4.5, 1) rec[-16] rec[-52]
+# DETECTOR(1.5, 1.5, 1) rec[-15] rec[-51]
+# DETECTOR(1.5, 3.5, 1) rec[-14] rec[-50]
+# DETECTOR(1.5, 5.5, 1) rec[-13] rec[-49]
+# DETECTOR(2.5, 0.5, 1) rec[-12] rec[-48]
+# DETECTOR(2.5, 2.5, 1) rec[-11] rec[-47]
+# DETECTOR(2.5, 4.5, 1) rec[-10] rec[-46]
+# DETECTOR(3.5, 1.5, 1) rec[-9] rec[-45]
+# DETECTOR(3.5, 3.5, 1) rec[-8] rec[-44]
+# DETECTOR(3.5, 5.5, 1) rec[-7] rec[-43]
+# DETECTOR(4.5, 0.5, 1) rec[-6] rec[-42]
+# DETECTOR(4.5, 2.5, 1) rec[-5] rec[-41]
+# DETECTOR(4.5, 4.5, 1) rec[-4] rec[-40]
+# DETECTOR(5.5, 1.5, 1) rec[-3] rec[-39]
+# DETECTOR(5.5, 3.5, 1) rec[-2] rec[-38]
+# DETECTOR(5.5, 5.5, 1) rec[-1] rec[-37]
+# TICK
+# R 8 10 12 20 22 24 34 36 38 46 48 50 60 62 64 72 74 76
+# RX 7 9 11 21 23 25 33 35 37 47 49 51 59 61 63 73 75 77
+# #!pragma MARKX(2) 25
+# TICK
+# CX 7 0 1 8 9 2 3 10 11 4 5 12 13 20 21 14 15 22 23 16 17 24 25 18 33 26 27 34 35 28 29 36 37 30 31 38 39 46 47 40 41 48 49 42 43 50 51 44 59 52 53 60 61 54 55 62 63 56 57 64 65 72 73 66 67 74 75 68 69 76 77 70
+# TICK
+# CX 7 13 14 8 9 15 16 10 11 17 18 12 26 20 21 27 28 22 23 29 30 24 25 31 33 39 40 34 35 41 42 36 37 43 44 38 52 46 47 53 54 48 49 55 56 50 51 57 59 65 66 60 61 67 68 62 63 69 70 64 0 72 2 74 4 76 73 1 75 3 77 5
+# TICK
+# CX 7 1 2 8 9 3 4 10 11 5 14 20 21 15 16 22 23 17 18 24 33 27 28 34 35 29 30 36 37 31 40 46 47 41 42 48 49 43 44 50 59 53 54 60 61 55 56 62 63 57 66 72 73 67 68 74 75 69 70 76 0 12 26 38 52 64 25 13 51 39 77 65
+# TICK
+# CX 7 14 15 8 9 16 17 10 11 18 27 20 21 28 29 22 23 30 31 24 33 40 41 34 35 42 43 36 37 44 53 46 47 54 55 48 49 56 57 50 59 66 67 60 61 68 69 62 63 70 13 12 39 38 65 64 25 26 51 52 1 72 3 74 5 76 73 2 75 4 77 0
+# TICK
+# M 8 10 12 20 22 24 34 36 38 46 48 50 60 62 64 72 74 76
+# MX 7 9 11 21 23 25 33 35 37 47 49 51 59 61 63 73 75 77
+# #!pragma MARKX(2) 25
+# DETECTOR(0.5, 1.5, 2) rec[-36] rec[-72]
+# DETECTOR(0.5, 3.5, 2) rec[-35] rec[-71]
+# DETECTOR(0.5, 5.5, 2) rec[-34] rec[-70]
+# DETECTOR(1.5, 0.5, 2) rec[-33] rec[-69]
+# DETECTOR(1.5, 2.5, 2) rec[-32] rec[-68]
+# DETECTOR(1.5, 4.5, 2) rec[-31] rec[-67]
+# DETECTOR(2.5, 1.5, 2) rec[-30] rec[-66]
+# DETECTOR(2.5, 3.5, 2) rec[-29] rec[-65]
+# DETECTOR(2.5, 5.5, 2) rec[-28] rec[-64]
+# DETECTOR(3.5, 0.5, 2) rec[-27] rec[-63]
+# DETECTOR(3.5, 2.5, 2) rec[-26] rec[-62]
+# DETECTOR(3.5, 4.5, 2) rec[-25] rec[-61]
+# DETECTOR(4.5, 1.5, 2) rec[-24] rec[-60]
+# DETECTOR(4.5, 3.5, 2) rec[-23] rec[-59]
+# DETECTOR(4.5, 5.5, 2) rec[-22] rec[-58]
+# DETECTOR(5.5, 0.5, 2) rec[-21] rec[-57]
+# DETECTOR(5.5, 2.5, 2) rec[-20] rec[-56]
+# DETECTOR(5.5, 4.5, 2) rec[-19] rec[-55]
+# DETECTOR(0.5, 0.5, 2) rec[-18] rec[-54]
+# DETECTOR(0.5, 2.5, 2) rec[-17] rec[-53]
+# DETECTOR(0.5, 4.5, 2) rec[-16] rec[-52]
+# DETECTOR(1.5, 1.5, 2) rec[-15] rec[-51]
+# DETECTOR(1.5, 3.5, 2) rec[-14] rec[-50]
+# DETECTOR(1.5, 5.5, 2) rec[-13] rec[-49]
+# DETECTOR(2.5, 0.5, 2) rec[-12] rec[-48]
+# DETECTOR(2.5, 2.5, 2) rec[-11] rec[-47]
+# DETECTOR(2.5, 4.5, 2) rec[-10] rec[-46]
+# DETECTOR(3.5, 1.5, 2) rec[-9] rec[-45]
+# DETECTOR(3.5, 3.5, 2) rec[-8] rec[-44]
+# DETECTOR(3.5, 5.5, 2) rec[-7] rec[-43]
+# DETECTOR(4.5, 0.5, 2) rec[-6] rec[-42]
+# DETECTOR(4.5, 2.5, 2) rec[-5] rec[-41]
+# DETECTOR(4.5, 4.5, 2) rec[-4] rec[-40]
+# DETECTOR(5.5, 1.5, 2) rec[-3] rec[-39]
+# DETECTOR(5.5, 3.5, 2) rec[-2] rec[-38]
+# DETECTOR(5.5, 5.5, 2) rec[-1] rec[-37]
+# TICK
+# M 0 1 2 3 4 5 13 14 15 16 17 18 26 27 28 29 30 31 39 40 41 42 43 44 52 53 54 55 56 57 65 66 67 68 69 70
+# #!pragma MARKZ(0) 39 40 41 42 43 44
+# DETECTOR(0.5, 1.5, 3) rec[-28] rec[-29] rec[-34] rec[-35] rec[-72]
+# DETECTOR(0.5, 3.5, 3) rec[-26] rec[-27] rec[-32] rec[-33] rec[-71]
+# DETECTOR(0.5, 5.5, 3) rec[-25] rec[-30] rec[-31] rec[-36] rec[-70]
+# DETECTOR(1.5, 0.5, 3) rec[-23] rec[-24] rec[-29] rec[-30] rec[-69]
+# DETECTOR(1.5, 2.5, 3) rec[-21] rec[-22] rec[-27] rec[-28] rec[-68]
+# DETECTOR(1.5, 4.5, 3) rec[-19] rec[-20] rec[-25] rec[-26] rec[-67]
+# DETECTOR(2.5, 1.5, 3) rec[-16] rec[-17] rec[-22] rec[-23] rec[-66]
+# DETECTOR(2.5, 3.5, 3) rec[-14] rec[-15] rec[-20] rec[-21] rec[-65]
+# DETECTOR(2.5, 5.5, 3) rec[-13] rec[-18] rec[-19] rec[-24] rec[-64]
+# DETECTOR(3.5, 0.5, 3) rec[-11] rec[-12] rec[-17] rec[-18] rec[-63]
+# DETECTOR(3.5, 2.5, 3) rec[-9] rec[-10] rec[-15] rec[-16] rec[-62]
+# DETECTOR(3.5, 4.5, 3) rec[-7] rec[-8] rec[-13] rec[-14] rec[-61]
+# DETECTOR(5.5, 0.5, 3) rec[-5] rec[-6] rec[-35] rec[-36] rec[-57]
+# DETECTOR(4.5, 1.5, 3) rec[-4] rec[-5] rec[-10] rec[-11] rec[-60]
+# DETECTOR(5.5, 2.5, 3) rec[-3] rec[-4] rec[-33] rec[-34] rec[-56]
+# DETECTOR(4.5, 3.5, 3) rec[-2] rec[-3] rec[-8] rec[-9] rec[-59]
+# DETECTOR(5.5, 4.5, 3) rec[-1] rec[-2] rec[-31] rec[-32] rec[-55]
+# DETECTOR(4.5, 5.5, 3) rec[-1] rec[-6] rec[-7] rec[-12] rec[-58]
+# OBSERVABLE_INCLUDE(0) rec[-3] rec[-9] rec[-15] rec[-21] rec[-27] rec[-33]
+# OBSERVABLE_INCLUDE(1) rec[-13] rec[-14] rec[-15] rec[-16] rec[-17] rec[-18]
+# """)
+
+circ.diagram('matchgraph-3d-html')
+plt.show()
+print()

@@ -94,8 +94,8 @@ def draw_bonds_as_qiskit(bonds):
 
 if __name__ == '__main__':
 
-    num_qubits = 12
-    n_vortices = 2
+    num_qubits = 6
+    n_vortices = 1
     bonds = brick_wall_circuit_on_circle(num_qubits, n_vortices)
     draw_bonds_as_qiskit(bonds*3)
 
