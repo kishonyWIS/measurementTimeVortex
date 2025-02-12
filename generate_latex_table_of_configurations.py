@@ -51,7 +51,7 @@ latex_table = r"""
 & \multicolumn{3}{c|}{\textbf{Without Vortices}} & \multicolumn{3}{c}{\textbf{With Vortices}} \\
 \midrule
 \hline
-\textbf{$D$} & \textbf{$N$} & \textbf{$L_1$} & \textbf{$L_2$} & \textbf{$N$} & \textbf{$L_1$} & \textbf{$L_2$} \\
+\textbf{$D$} & \textbf{$N$} & \textbf{$\mathbf{L}_1$} & \textbf{$\mathbf{L}_2$} & \textbf{$N$} & \textbf{$\mathbf{L}_1$} & \textbf{$\mathbf{L}_2$} \\
 \midrule
 """
 
